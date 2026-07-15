@@ -1,0 +1,11 @@
+# MCP-callable "place the held cube at a location" tool. The LLM picks this up
+# via pilot when the user says something like "把积木放到那边" / "place the cube
+# at 中间" — the handler docstring in main.py is what the LLM reads.
+[contract]
+id      = "robonix/skill/grasp_cube/place_cube"
+version = "1"
+kind    = "skill"
+idl     = "grasp_cube/srv/PlaceCube.srv"
+
+[mode]
+type = "rpc"

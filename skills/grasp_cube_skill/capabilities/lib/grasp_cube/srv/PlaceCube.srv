@@ -1,0 +1,7 @@
+# Move the arm to a target location and release the held cube there.
+# Request: where to put down.
+# Response: whether the place completed, plus a human-readable message.
+string position   # required: where to place — "x,y" / "x,y,z" (base frame, metres) or a named spot (e.g. "中间")
+---
+bool ok           # true if the arm reached the place pose and opened the hand
+string message    # human-readable status / error detail

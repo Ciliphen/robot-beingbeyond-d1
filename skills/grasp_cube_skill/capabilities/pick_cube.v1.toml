@@ -1,0 +1,11 @@
+# MCP-callable "pick up a cube at a location" tool. The LLM picks this up via
+# pilot when the user says something like "把积木从这里抓起来" / "pick up the
+# cube at 0.2,0.1" — the handler docstring in main.py is what the LLM reads.
+[contract]
+id      = "robonix/skill/grasp_cube/pick_cube"
+version = "1"
+kind    = "skill"
+idl     = "grasp_cube/srv/PickCube.srv"
+
+[mode]
+type = "rpc"

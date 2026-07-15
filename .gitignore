@@ -1,0 +1,19 @@
+# Local env / secrets
+.env
+.llmenv
+
+# Robonix codegen + build output
+**/rbnx-build/
+**/__pycache__/
+*.pyc
+
+# Robonix runtime logs
+logs/
+**/logs/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+rbnx-boot/
