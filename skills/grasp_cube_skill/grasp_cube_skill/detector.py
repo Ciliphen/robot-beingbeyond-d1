@@ -11,11 +11,15 @@ The maths mirror ``block_grasp/grasp_controller.py::detect_blocks`` so detected
 positions line up with what the pick pipeline expects. The pure-compute
 perception stack (YOLO loader/inference, OBB geometry helpers, tunables) is
 reused from the Beingbeyond_D1 repo, imported via ``BEINGBEYOND_PATH``.
+
+The camera-aim + homography + perspective-correction plumbing lives in the
+``HeadCameraProjector`` base class so the VLM detector (``vlm_detector.py``) can
+resolve its own pixel detections to base-frame XY through the same calibration.
 """
 from __future__ import annotations
 
 import time
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
@@ -40,17 +44,37 @@ from block_grasp.config import (
 )
 
 
-class CubeDetector:
-    """Head-camera + YOLO cube detector. Resolves detections to base-frame XY."""
+class _Capture:
+    """One head-camera frame plus the geometry needed to project pixels to the
+    base frame: the RGB image, the camera-origin XYZ (base frame), the current
+    EE XY (workspace-clamp centre), and the pixel scale from the live camera
+    resolution to the calibration resolution."""
 
-    def __init__(self, *, arm, camera, model_path: str, calib_path: str,
-                 urdf_path: str = "") -> None:
-        """Load the hand-eye calibration and the YOLO model.
+    __slots__ = ("rgb", "cam_x", "cam_y", "cam_z", "ws_x0", "ws_y0", "sx", "sy")
+
+    def __init__(self, rgb, cam_xyz, ws_xy, scale) -> None:
+        self.rgb = rgb
+        self.cam_x, self.cam_y, self.cam_z = cam_xyz
+        self.ws_x0, self.ws_y0 = ws_xy
+        self.sx, self.sy = scale
+
+
+class HeadCameraProjector:
+    """Shared perception plumbing: load the hand-eye calibration, aim the head
+    camera at the table, and resolve a table-plane pixel to a base-frame grasp
+    point (homography + perspective correction + workspace clamp).
+
+    Subclasses add *what* to detect (YOLO in ``CubeDetector``, a VLM in
+    ``VLMDetector``); the geometry that turns a pixel into (x, y, z) is shared so
+    both resolve positions identically against the same calibration.
+    """
+
+    def __init__(self, *, arm, camera, calib_path: str, urdf_path: str = "") -> None:
+        """Load the hand-eye calibration and set up the kinematics.
 
         Args:
             arm:        Arm primitive handle (needs ``set_head`` + ``get_positions``).
             camera:     Camera primitive handle (``get_aligned_frames`` -> RGB).
-            model_path: Path to the YOLO-OBB ``.pt`` checkpoint.
             calib_path: Path to ``handeye_calib.npz`` (H, head pose, table points).
             urdf_path:  Robot URDF; empty for the SDK default.
         """
@@ -72,10 +96,6 @@ class CubeDetector:
             self._W = None
             self._z_table = 0.08
 
-        print(f"[detect] loading YOLO model {model_path} ...", flush=True)
-        self._model = load_model(model_path)
-        print("[detect] detector ready", flush=True)
-
     def _get_table_z(self, x: float, y: float) -> float:
         """Interpolate table Z at (x, y) — inverse-distance-weighted average of
         the 3 nearest calibration points (handles a slightly tilted table)."""
@@ -89,6 +109,82 @@ class CubeDetector:
         wgt /= wgt.sum()
         return float(np.dot(wgt, self._W[idx, 2]))
 
+    def _capture(self) -> _Capture:
+        """Aim the head at the table (the pose the homography was calibrated at),
+        settle, grab one RGB frame, and read the camera / EE pose from FK."""
+        self._arm.set_head(self._head_yaw, self._head_pitch)
+        time.sleep(0.5)
+
+        rgb, _ = self._camera.get_aligned_frames(filtered=False)
+
+        q_full = np.asarray(self._arm.get_positions(), dtype=float)
+        q_head, q_arm = self._kin.split_q(q_full)
+        T_base_cam = self._kin.camera_in_base(q_head, q_arm)
+        cx, cy, cz = T_base_cam[:3, 3]
+        T_ee = self._kin.ee_in_base(q_head, q_arm)
+        ws_x0, ws_y0 = float(T_ee[0, 3]), float(T_ee[1, 3])
+
+        sx = CALIB_CAM_WIDTH / max(rgb.shape[1], 1)
+        sy = CALIB_CAM_HEIGHT / max(rgb.shape[0], 1)
+        return _Capture(rgb, (float(cx), float(cy), float(cz)), (ws_x0, ws_y0), (sx, sy))
+
+    def _project(self, cap: _Capture, u_px: float, v_px: float,
+                 grasp_height: float) -> Tuple[float, float, float]:
+        """Resolve a live-camera-resolution pixel to a base-frame grasp point.
+
+        Args:
+            cap:          the frame/geometry from :meth:`_capture`.
+            u_px, v_px:   pixel (in the live camera resolution) of the grasp
+                          point on the object.
+            grasp_height: height of the grasp point above the table plane (m);
+                          used both for perspective correction (the object sits
+                          above the table) and for the returned Z.
+
+        Returns:
+            ``(x, y, z)`` in the base frame (metres): x, y are the perspective-
+            corrected, workspace-clamped table-plane position; z = table Z at
+            that XY + ``grasp_height``.
+        """
+        # Pixel -> table-plane XY via the homography (scaled to calib resolution).
+        wx_hom, wy_hom = pixel_to_world_2d(u_px * cap.sx, v_px * cap.sy, self._H)
+
+        # Perspective correction: the grasp point sits above the table plane, so
+        # the ray from the camera hits it before the plane — shift XY along the
+        # camera->plane ray by the height ratio.
+        z_tbl = self._get_table_z(wx_hom, wy_hom)
+        z_obj = z_tbl + grasp_height
+        denom = z_tbl - cap.cam_z
+        t_corr = (z_obj - cap.cam_z) / denom if abs(denom) > 0.001 else 1.0
+        wx = cap.cam_x + (wx_hom - cap.cam_x) * t_corr
+        wy = cap.cam_y + (wy_hom - cap.cam_y) * t_corr
+
+        # Clamp to the reachable workspace around the current EE.
+        wx = float(np.clip(wx, cap.ws_x0 - MAX_DXY, cap.ws_x0 + MAX_DXY))
+        wy = float(np.clip(wy, cap.ws_y0 - MAX_DXY, cap.ws_y0 + MAX_DXY))
+        z_grasp = z_tbl + grasp_height
+        return wx, wy, float(z_grasp)
+
+
+class CubeDetector(HeadCameraProjector):
+    """Head-camera + YOLO cube detector. Resolves detections to base-frame XY."""
+
+    def __init__(self, *, arm, camera, model_path: str, calib_path: str,
+                 urdf_path: str = "") -> None:
+        """Load the hand-eye calibration and the YOLO model.
+
+        Args:
+            arm:        Arm primitive handle (needs ``set_head`` + ``get_positions``).
+            camera:     Camera primitive handle (``get_aligned_frames`` -> RGB).
+            model_path: Path to the YOLO-OBB ``.pt`` checkpoint.
+            calib_path: Path to ``handeye_calib.npz`` (H, head pose, table points).
+            urdf_path:  Robot URDF; empty for the SDK default.
+        """
+        super().__init__(arm=arm, camera=camera, calib_path=calib_path, urdf_path=urdf_path)
+
+        print(f"[detect] loading YOLO model {model_path} ...", flush=True)
+        self._model = load_model(model_path)
+        print("[detect] detector ready", flush=True)
+
     def detect(self) -> List[Dict[str, object]]:
         """Aim the head, grab a frame, run YOLO, and return the detected cubes.
 
@@ -97,54 +193,22 @@ class CubeDetector:
         are the grasp point (z = cube centre, ~2.5 cm above the table) — feed
         them straight to ``pick_cube``.
         """
-        # 1. Aim the head camera at the table (the pose the homography was
-        #    calibrated at) and let it settle before grabbing a frame.
-        self._arm.set_head(self._head_yaw, self._head_pitch)
-        time.sleep(0.5)
+        cap = self._capture()
 
-        # 2. One RGB frame from the head camera.
-        rgb, _ = self._camera.get_aligned_frames(filtered=False)
-
-        # 3. Camera + EE pose from FK (for perspective correction / clamp).
-        q_full = np.asarray(self._arm.get_positions(), dtype=float)
-        q_head, q_arm = self._kin.split_q(q_full)
-        T_base_cam = self._kin.camera_in_base(q_head, q_arm)
-        cx, cy, cz = T_base_cam[:3, 3]
-        T_ee = self._kin.ee_in_base(q_head, q_arm)
-        ws_x0, ws_y0 = float(T_ee[0, 3]), float(T_ee[1, 3])
-
-        # 4. YOLO OBB (model trained on BGR; camera gives RGB).
-        frame_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        # YOLO OBB (model trained on BGR; camera gives RGB).
+        frame_bgr = cv2.cvtColor(cap.rgb, cv2.COLOR_RGB2BGR)
         detections = detect_objects_in_frame(
             self._model, frame_bgr, conf_thres=CONF_THRESHOLD, iou_thres=IOU_THRESHOLD
         )
 
-        # Scale pixels from the camera resolution to the calibration resolution.
-        sx = CALIB_CAM_WIDTH / max(rgb.shape[1], 1)
-        sy = CALIB_CAM_HEIGHT / max(rgb.shape[0], 1)
-
         cubes: List[Dict[str, object]] = []
         for (u, v, w, h, r), score, _cls_id, cls_name in detections:
-            # OBB bottom-centre pixel -> table-plane XY (homography, first pass).
+            # OBB bottom-centre pixel -> base-frame grasp point. Grasp height =
+            # cube centre (~2.5 cm above the table for a 5 cm cube), NOT the top
+            # face — pick_cube descends straight to this z, so reporting the top
+            # face would leave the hand grabbing above the cube.
             u_bot, v_bot = obb_bottom_center(u, v, w, h, np.rad2deg(r), ratio=OBB_GRASP_RATIO)
-            wx_hom, wy_hom = pixel_to_world_2d(u_bot * sx, v_bot * sy, self._H)
-
-            # Perspective correction for the cube sitting above the table plane.
-            z_tbl = self._get_table_z(wx_hom, wy_hom)
-            z_obj = z_tbl + BLOCK_SIZE / 2.0
-            denom = z_tbl - cz
-            t_corr = (z_obj - cz) / denom if abs(denom) > 0.001 else 1.0
-            wx = cx + (wx_hom - cx) * t_corr
-            wy = cy + (wy_hom - cy) * t_corr
-
-            # Clamp to the reachable workspace around the current EE.
-            wx = float(np.clip(wx, ws_x0 - MAX_DXY, ws_x0 + MAX_DXY))
-            wy = float(np.clip(wy, ws_y0 - MAX_DXY, ws_y0 + MAX_DXY))
-            # Grasp height = cube centre (~2.5 cm above the table for a 5 cm
-            # cube), NOT the top face — pick_cube descends straight to this z,
-            # so reporting the top face would leave the hand grabbing above the
-            # cube. z_tbl comes from the hand-eye calibration table plane.
-            z_grasp = z_tbl + BLOCK_SIZE / 2.0
+            wx, wy, z_grasp = self._project(cap, u_bot, v_bot, BLOCK_SIZE / 2.0)
 
             grasp_angle = estimate_grasp_angle_deg(u, v, w, h, np.rad2deg(r))
             cubes.append({
@@ -152,7 +216,7 @@ class CubeDetector:
                 "score": round(float(score), 3),
                 "x": round(wx, 3),
                 "y": round(wy, 3),
-                "z": round(float(z_grasp), 3),
+                "z": round(z_grasp, 3),
                 "grasp_angle_deg": round(float(grasp_angle), 1),
             })
 
