@@ -116,10 +116,11 @@ tree:
             - { contract: robonix/primitive/camera/depth_snapshot, provider_id: d1_camera }
 
 description:
-  summary: "BeingBeyond D1 桌面机器人：固定底座 6 自由度机械臂 + 2 自由度头部云台 + 五指灵巧手 + 头部 RGB-D 相机。当前部署提供 YOLO-OBB 积木抓取技能（block_grasp）。"
+  summary: "BeingBeyond D1 桌面机器人：固定底座 6 自由度机械臂 + 2 自由度头部云台 + 五指灵巧手 + 头部 RGB-D 相机。当前部署提供 grasp_cube 技能：用头部相机 + YOLO 检测桌面积木，并按坐标抓取 / 放置物体（可选传入抓取角度与手爪开合大小）。"
   can_do:
-    - "用五指灵巧手抓取桌面积木并放到指定位置。"
-    - "把一个积木叠到另一个积木上。"
+    - "用头部 RGB-D 相机 + YOLO-OBB 检测桌面积木，报告每个积木的 base 系位置（detect_cubes）。"
+    - "把机械臂移到指定位置抓起物体并夹住，可选指定抓取角度（手腕绕竖直方向旋转）与手爪开合大小（pick_cube）。"
+    - "把夹住的物体移到指定位置放下，可选指定角度与开合大小（place_cube）。"
     - "通过头部 RGB-D 相机俯视观察桌面。"
   cannot_do:
     - "移动底盘或导航——D1 是固定底座，没有轮子/底盘。"
@@ -128,4 +129,4 @@ description:
   notes:
     - "Soma v2 只把本文件和引用的 URDF 作为原始文本服务；primitive/skill 的启动由 robonix_manifest.yaml 驱动。"
     - "机体部件由 d1_arm / d1_hand / d1_camera 三个原语提供（见 manifest 的 primitive 列表与各部件 provided_by）；均为直连 SDK + gRPC，无 ROS 后端，故状态读取用 get_state rpc 而非 topic_out 流。"
-    - "抓取能力来自 block_grasp 技能（运行时经 atlas 注册），它作为消费者调用上述原语，不在本文件的机体树中声明。"
+    - "检测 / 抓取能力来自 grasp_cube 技能（运行时经 atlas 注册，提供 detect_cubes / pick_cube / place_cube），它作为消费者调用上述原语,不在本文件的机体树中声明。"

@@ -4,7 +4,7 @@ name: robot-beingbeyond-d1
 catalog:
   name: robonix.robot.beingbeyond.d1
   version: 0.1.0
-  description: BeingBeyond D1 desktop robot deployment — dexterous-hand cube pick/place skill.
+  description: BeingBeyond D1 desktop robot deployment — dexterous-hand object pick/place skill.
   license: MulanPSL-2.0
   tags: [robot, deploy, beingbeyond-d1, manipulation]
   maintainers:
@@ -30,10 +30,12 @@ system:
   liaison:  { listen: 127.0.0.1:50081, log: info }
 
 # ── Hardware primitives ──────────────────────────────────────────────
-# The grasp_cube skill consumes d1_arm + d1_hand over gRPC. Both are shipped in
-# this repo under ./primitives/ (they own the serial link / CAN bus and depend
-# only on the beingbeyond_d1_sdk wheel + robonix_api, not on any repo source).
-# No camera primitive: this skill needs no vision.
+# The grasp_cube skill consumes d1_arm + d1_hand + d1_camera over gRPC, all
+# shipped in this repo under ./primitives/ (they own the serial link / CAN bus /
+# RealSense; arm+hand depend only on the beingbeyond_d1_sdk wheel + robonix_api,
+# d1_camera also uses vision.RealSenseCamera from BEINGBEYOND_PATH). The camera
+# feeds the skill's detect_cubes (YOLO) tool; run it at the hand-eye calibration
+# resolution (1280x720) so detections resolve correctly.
 primitive:
   - name: d1_arm
     path: ./primitives/d1_arm
@@ -47,15 +49,29 @@ primitive:
       hand_type: right
       can_iface: can0
       baudrate: 1000000
+  - name: d1_camera
+    path: ./primitives/d1_camera
+    config:
+      width: 1280
+      height: 720
+      fps: 30
+      frame_id: camera
 
 service: []
 
 # ── Skills ───────────────────────────────────────────────────────────
-# grasp_cube: two MCP tools (pick_cube / place_cube). pilot dispatches to it
-# through executor when the user asks to pick up / put down a cube.
+# grasp_cube: three MCP tools (detect_cubes / pick_cube / place_cube). pilot
+# dispatches to it through executor when the user asks to find / pick up / put
+# down an object (pick_cube / place_cube also take an optional grasp angle and
+# gripper aperture). detect_cubes needs the YOLO weights + hand-eye calibration under
+# ./skills/grasp_cube_skill/models/ (see that dir's README; git-ignored).
 skill:
   - name: grasp_cube
     path: ./skills/grasp_cube_skill
     config:
       pick_z: 0.095
       urdf_path: ""
+      # Detection assets. Empty → package defaults ./models/best.pt and
+      # ./models/handeye_calib.npz (relative paths resolve to the skill package).
+      model_path: ""
+      calib_path: ""

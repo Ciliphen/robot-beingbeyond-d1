@@ -4,7 +4,7 @@ package:
   name: com.beingbeyond.skill.grasp_cube
   version: 0.1.0
   vendor: beingbeyond
-  description: Grasp a cube at a location and place it at another — two MCP tools for the D1 dexterous hand.
+  description: Grasp an object at a location and place it at another (with optional grasp angle and gripper aperture) — MCP tools for the D1 dexterous hand.
   tags: [skill, grasp, manipulation, beingbeyond-d1]
   maintainers:
     - Felix <xi.lifeng@qq.com>
@@ -20,6 +20,7 @@ capabilities:
   - name: robonix/skill/grasp_cube/driver
   - name: robonix/skill/grasp_cube/pick_cube
   - name: robonix/skill/grasp_cube/place_cube
+  - name: robonix/skill/grasp_cube/detect_cubes
 
 # Upstream hardware the skill consumes at runtime (discovered via atlas). The
 # arm + hand primitives own the hardware; the skill drives them over gRPC and
@@ -28,6 +29,8 @@ capabilities:
 depends:
   - name: robonix/primitive/arm/get_state
   - name: robonix/primitive/arm/move_joint
+  - name: robonix/primitive/arm/set_head
   - name: robonix/primitive/hand/move_joint
   - name: robonix/primitive/hand/get_state
   - name: robonix/primitive/hand/info
+  - name: robonix/primitive/camera/snapshot
