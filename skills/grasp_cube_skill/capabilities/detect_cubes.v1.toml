@@ -1,0 +1,12 @@
+# MCP-callable "detect the cubes on the table" tool. The LLM picks this up via
+# pilot when the user says something like "看看桌上有哪些积木" / "找一下红色积木在哪"
+# — the handler runs YOLO on a head-camera frame and reports each cube's
+# base-frame position, which the LLM can then feed to pick_cube.
+[contract]
+id      = "robonix/skill/grasp_cube/detect_cubes"
+version = "1"
+kind    = "skill"
+idl     = "grasp_cube/srv/DetectCubes.srv"
+
+[mode]
+type = "rpc"

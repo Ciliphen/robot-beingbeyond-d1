@@ -17,3 +17,9 @@ logs/
 .DS_Store
 
 rbnx-boot/
+
+# YOLO weights + hand-eye calibration — large / deploy-specific binaries.
+# Provide these locally (see skills/grasp_cube_skill/models/README.md); they
+# are intentionally NOT committed to the community repo.
+skills/grasp_cube_skill/models/*.pt
+skills/grasp_cube_skill/models/*.npz

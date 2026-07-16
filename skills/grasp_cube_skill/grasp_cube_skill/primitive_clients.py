@@ -4,18 +4,21 @@
 The pick/place controller (``controller.py``) is written against two SDK-shaped
 handles — an arm ``robot`` and a dexterous ``hand``. Instead of opening the
 serial link / CAN bus directly, this module exposes look-alike adapters that
-route every hardware call through the robonix d1_arm / d1_hand *primitives* over
-gRPC. The skill is thus a pure consumer; the primitives own the hardware.
+route every hardware call through the robonix d1_arm / d1_hand / d1_camera
+*primitives* over gRPC. The skill is thus a pure consumer; the primitives own
+the hardware.
 
-This skill needs NO camera and NO head motion: the end-effector pose depends
-only on the 6 arm joints (head and arm are separate branches off ``link_base``),
-and locations are given explicitly, so there is no vision and the head is never
-touched.
+Pick / place use only the 6 arm joints (head and arm are separate branches off
+``link_base``) with explicit locations, so they touch no camera and hold the
+head still. The ``detect_cubes`` tool additionally aims the head at the table
+(``arm.set_head``) and pulls one RGB frame (``camera``) for YOLO — see
+``detector.py``.
 
-Mapping (only the methods the controller actually calls):
+Mapping (only the methods the controller / detector actually call):
 
-  robot.get_positions()        -> arm/get_state    (head padded as 0,0)
+  robot.get_positions()        -> arm/get_state    (head = last set_head, else 0,0)
   robot.set_positions(q)       -> arm/move_joint    (6 arm joints; head ignored)
+  robot.set_head(yaw, pitch)   -> arm/set_head      (aim head camera; detect only)
   robot.wait_until_reached(q)  -> poll arm/get_state until arm joints converge
   robot.close()                -> no-op (primitive owns the serial link)
 
@@ -23,6 +26,9 @@ Mapping (only the methods the controller actually calls):
   hand.read_joint_pos()        -> hand/get_state
   hand.open_hand()             -> hand/move_joint all-open (safe release)
   hand.close_can()             -> no-op (primitive owns the CAN bus)
+
+  camera.get_aligned_frames()  -> camera/snapshot (JPEG Image -> RGB ndarray)
+  camera.stop()                -> no-op (primitive owns the RealSense)
 """
 from __future__ import annotations
 
@@ -34,9 +40,11 @@ import numpy as np
 class PrimitiveArm:
     """HeadArmRobot-look-alike backed by the arm primitive (joint-space, 6 DoF).
 
-    The head is not driven by this skill; ``get_positions`` pads the 2 head
-    joints as ``0.0`` so the 8-vector the kinematics expects is well-formed
-    (the end-effector FK ignores the head branch)."""
+    The head is driven only via the explicit ``set_head`` (used by detection to
+    aim the camera); pick / place never call it. ``get_positions`` prepends the
+    last commanded head pose — ``(0, 0)`` until the first ``set_head`` — so the
+    8-vector the kinematics expects is well-formed (the end-effector FK ignores
+    the head branch, but the camera FK depends on it)."""
 
     def __init__(
         self,
@@ -44,6 +52,7 @@ class PrimitiveArm:
         get_state_stub,
         move_joint_stub,
         arm_pb2,
+        set_head_stub=None,
         arm_tol: float = 0.03,
         timeout: float = 8.0,
         poll: float = 0.03,
@@ -52,6 +61,7 @@ class PrimitiveArm:
     ) -> None:
         self._gs = get_state_stub
         self._mj = move_joint_stub
+        self._sh = set_head_stub
         self._pb = arm_pb2
         self._arm_tol = arm_tol
         self._timeout = timeout
@@ -60,6 +70,8 @@ class PrimitiveArm:
         # < settle_eps rad of change across settle_polls consecutive reads.
         self._settle_eps = settle_eps
         self._settle_polls = settle_polls
+        # Last commanded head pose (yaw, pitch) rad; (0, 0) until first set_head.
+        self._head: tuple[float, float] = (0.0, 0.0)
 
     # -- reads ---------------------------------------------------------------
     def _read_arm(self) -> list[float]:
@@ -70,17 +82,27 @@ class PrimitiveArm:
 
     def get_positions(self) -> np.ndarray:
         arm6 = self._read_arm()
-        return np.asarray([0.0, 0.0, *arm6], dtype=float)
+        return np.asarray([self._head[0], self._head[1], *arm6], dtype=float)
 
     def get_positions_and_velocities(self):
         resp = self._gs.GetJointState(self._pb.GetJointState_Request())
         if not resp.ok:
             raise RuntimeError(f"arm get_state failed: {resp.message}")
-        pos = np.asarray([0.0, 0.0, *[float(v) for v in resp.positions]], dtype=float)
+        pos = np.asarray([self._head[0], self._head[1], *[float(v) for v in resp.positions]], dtype=float)
         vel = np.asarray([0.0, 0.0, *[float(v) for v in resp.velocities]], dtype=float)
         return pos, vel
 
     # -- writes --------------------------------------------------------------
+    def set_head(self, yaw: float, pitch: float) -> None:
+        """Aim the head (yaw, pitch in rad) via arm/set_head and cache the pose
+        so get_positions reports it (needed for the camera FK). Used by
+        detection only; pick / place leave the head untouched."""
+        if self._sh is None:
+            raise RuntimeError("arm set_head not connected")
+        resp = self._sh.SetHead(self._pb.SetHead_Request(yaw=float(yaw), pitch=float(pitch)))
+        if not resp.ok:
+            raise RuntimeError(f"arm set_head failed: {resp.message}")
+        self._head = (float(yaw), float(pitch))
     @staticmethod
     def _arm6(q) -> list[float]:
         q = [float(v) for v in q]
@@ -167,11 +189,37 @@ class PrimitiveHand:
         pass  # the hand primitive owns the CAN bus
 
 
+class PrimitiveCamera:
+    """RealSenseCamera-look-alike backed by the camera primitive (RGB only)."""
+
+    def __init__(self, *, snapshot_stub, camera_pb2) -> None:
+        self._ss = snapshot_stub
+        self._pb = camera_pb2
+
+    def get_aligned_frames(self, filtered: bool = False):
+        """Return (rgb, None). Detection uses 2D homography and ignores depth,
+        so the camera primitive only serves RGB; depth is None."""
+        _ = filtered
+        resp = self._ss.GetCameraImage(self._pb.GetCameraImage_Request())
+        data = bytes(resp.image.data)
+        if not data:
+            raise RuntimeError("camera snapshot returned no image (camera not initialized?)")
+        from io import BytesIO
+
+        from PIL import Image as PILImage
+
+        rgb = np.asarray(PILImage.open(BytesIO(data)).convert("RGB"))
+        return rgb, None
+
+    def stop(self) -> None:
+        pass  # the camera primitive owns the RealSense
+
+
 def connect_primitives(skill):
-    """Discover + connect the d1 arm/hand primitives via atlas and return
-    ``(arm, hand)`` adapter handles. Raises RuntimeError if any primitive is
-    not registered / reachable. Channels are tracked by ``skill`` and closed
-    on teardown. No camera is used by this skill."""
+    """Discover + connect the d1 arm/hand/camera primitives via atlas and return
+    ``(arm, hand, camera)`` adapter handles. Raises RuntimeError if any primitive
+    is not registered / reachable. Channels are tracked by ``skill`` and closed
+    on teardown."""
     import grpc
     from robonix_api import ATLAS
     from robonix_api.atlas_types import Transport
@@ -179,6 +227,7 @@ def connect_primitives(skill):
     # Generated by rbnx codegen into rbnx-build/codegen/proto_gen (added to
     # sys.path by the Skill constructor before this module is imported).
     import arm_pb2  # type: ignore
+    import camera_pb2  # type: ignore
     import hand_pb2  # type: ignore
     import robonix_contracts_pb2_grpc as cg  # type: ignore
 
@@ -194,6 +243,7 @@ def connect_primitives(skill):
     arm = PrimitiveArm(
         get_state_stub=_stub("robonix/primitive/arm/get_state", cg.RobonixPrimitiveArmGetStateStub),
         move_joint_stub=_stub("robonix/primitive/arm/move_joint", cg.RobonixPrimitiveArmMoveJointStub),
+        set_head_stub=_stub("robonix/primitive/arm/set_head", cg.RobonixPrimitiveArmSetHeadStub),
         arm_pb2=arm_pb2,
     )
 
@@ -208,4 +258,9 @@ def connect_primitives(skill):
         hand_pb2=hand_pb2,
         axis_names=[j.name for j in info.joints],
     )
-    return arm, hand
+
+    camera = PrimitiveCamera(
+        snapshot_stub=_stub("robonix/primitive/camera/snapshot", cg.RobonixPrimitiveCameraSnapshotStub),
+        camera_pb2=camera_pb2,
+    )
+    return arm, hand, camera
