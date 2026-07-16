@@ -87,3 +87,6 @@ skill:
       vlm_api_key: ""
       vlm_model: ""
       vlm_grasp_height: 0.025
+      # verify_grasp: a re-detected object within this radius (m) of the queried
+      # position counts as "at" it (pick=now absent, place=now present).
+      verify_match_radius: 0.05

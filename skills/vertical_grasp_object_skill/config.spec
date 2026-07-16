@@ -45,3 +45,10 @@ config:
   # correction. Default = a 5 cm cube's centre; raise/lower for taller/flatter
   # objects resting on the table.
   vlm_grasp_height: 0.025
+
+  # float (metres), default: 0.05.
+  # verify_grasp match radius: a re-detected object within this distance of the
+  # queried position counts as "at" that position. pick success = object now
+  # absent within the radius; place success = object now present within it.
+  # Larger tolerates detection jitter; smaller is stricter.
+  verify_match_radius: 0.05

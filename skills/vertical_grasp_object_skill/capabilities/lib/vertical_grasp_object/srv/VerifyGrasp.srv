@@ -1,0 +1,13 @@
+# Visually confirm a pick / place succeeded, via the head camera + the VLM.
+# Re-detects the object and checks whether it is present near `position`:
+#   mode="pick"  → success iff the object is now ABSENT there (it was lifted).
+#   mode="place" → success iff the object is now PRESENT there.
+# Request: what object, which action, and where it was picked from / placed at.
+# Response: whether the check ran, the pass/fail verdict, and a message.
+string instruction   # required: description of the object, e.g. "红色的杯子"
+string mode          # required: "pick" or "place"
+string position      # required: where it was picked from / placed at — "x,y" (base frame, metres)
+---
+bool ok              # true if the check ran (VLM reachable, args valid)
+bool success         # the pick/place verdict (see mode above)
+string message       # human-readable detail (nearest detection distance, etc.)

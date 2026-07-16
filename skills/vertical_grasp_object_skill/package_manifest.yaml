@@ -22,6 +22,7 @@ capabilities:
   - name: robonix/skill/vertical_grasp_object/place_cube
   - name: robonix/skill/vertical_grasp_object/detect_cubes
   - name: robonix/skill/vertical_grasp_object/detect_objects
+  - name: robonix/skill/vertical_grasp_object/verify_grasp
 
 # Upstream hardware the skill consumes at runtime (discovered via atlas). The
 # arm + hand primitives own the hardware; the skill drives them over gRPC and

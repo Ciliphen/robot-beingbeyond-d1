@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 """vertical_grasp_object — detect cubes, pick one at a location, place it at another.
 
-Four LLM-callable MCP tools for the D1 dexterous hand:
+Five LLM-callable MCP tools for the D1 dexterous hand:
 
-  * detect_cubes(class_filter)  — YOLO on a head-camera frame; report each cube's
-                                  base-frame position (feed x,y to pick_cube).
   * detect_objects(instruction) — VLM on a head-camera frame; open-vocabulary,
-                                  locate an object by description (feed to pick_cube).
+                                  locate an object by description. PREFERRED
+                                  detector (feed x,y,z + angle to pick_cube).
+  * detect_cubes(class_filter)  — YOLO fallback; fixed cube classes, use only
+                                  when detect_objects fails / is unavailable.
   * pick_cube(position)         — move to the location, grasp an object, lift and hold.
   * place_cube(position)        — move to the location, release the held object, lift.
+  * verify_grasp(...)           — VLM re-check after a pick/place: did it work?
 
 pick_cube / place_cube take a coordinate string ("x,y" / "x,y,z", base frame,
 metres) or a named spot; the caller (LLM/user) can get real coordinates from
@@ -42,6 +44,7 @@ from vertical_grasp_object_mcp import (  # noqa: E402
     PlaceCube_Request, PlaceCube_Response,
     DetectCubes_Request, DetectCubes_Response,
     DetectObjects_Request, DetectObjects_Response,
+    VerifyGrasp_Request, VerifyGrasp_Response,
 )
 
 # Package root (the vertical_grasp_object_skill dir holding models/, capabilities/, ...),
@@ -69,6 +72,7 @@ _state: dict = {
     "vlm_api_key":      "",   # bearer token (env VLM_API_KEY)
     "vlm_model":        "",   # model id, must accept images (env VLM_MODEL)
     "vlm_grasp_height": 0.025,  # grasp Z above table for VLM hits (no depth)
+    "verify_match_radius": 0.05,  # verify_grasp: a detection within this (m) counts as "at" the position
     "controller":  None,
     "detector":    None,   # CubeDetector, built in on_activate (camera + YOLO)
     "vlm_detector": None,  # VLMDetector, built in on_activate (camera + VLM)
@@ -136,8 +140,13 @@ def pick_cube(req: PickCube_Request) -> PickCube_Response:
     tightly to close, 0.0 (open) – 0.5 (standard grasp) – 1.0 (tightest, for
     smaller objects) (empty = standard grasp). The default grasp is tuned for the
     standard cube (5 cm side length), so leave `gripper` empty for those; use a
-    larger value for objects smaller than 5 cm. Returns ok=true if an object was
-    actually grasped."""
+    larger value for objects smaller than 5 cm. Prefer passing the
+    `grasp_angle_deg` from detect_objects/detect_cubes as `angle_deg` — for
+    elongated/tilted objects the right yaw is what makes the grasp succeed.
+    Returns ok=true if an object was actually grasped. AFTER a successful pick,
+    call verify_grasp(mode="pick") to visually confirm it; if that reports
+    success=false, re-run detect_objects to get the object's current position
+    and try pick_cube again."""
     ctrl = _controller_or_none()
     if ctrl is None:
         return PickCube_Response(ok=False, message="skill not activated (no arm/hand connection)")
@@ -169,7 +178,9 @@ def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
     Optional `angle_deg` sets the approach yaw angle in degrees (hand rotation
     about vertical; empty = default orientation) and `gripper` sets the release
     aperture on the same 0.0 (fully open) – 0.5 (grasp) – 1.0 (tightest) scale
-    (empty = fully open)."""
+    (empty = fully open). AFTER placing, call verify_grasp(mode="place") to
+    confirm the object is actually at the target; if success=false, re-detect
+    and place again."""
     ctrl = _controller_or_none()
     if ctrl is None:
         return PlaceCube_Response(ok=False, message="skill not activated (no arm/hand connection)")
@@ -190,13 +201,15 @@ def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
 
 @vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/detect_cubes")
 def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
-    """用头部相机拍一张图，跑 YOLO 识别桌面上的积木，返回每个积木的位置。The LLM
-    should call this to see what cubes are on the table and where they are, then
-    feed a cube's x,y,z to pick_cube. Optional `class_filter` (e.g. "red_cube")
-    returns only that colour. `cubes` is a JSON array of
+    """（兜底工具）用头部相机拍一张图，跑 YOLO 识别桌面上的积木，返回每个积木的位置。
+    FALLBACK ONLY: prefer detect_objects for everything, including cubes. Use
+    this only when detect_objects failed or is unavailable (no VLM configured) —
+    it is limited to the fixed YOLO cube classes. Optional `class_filter`
+    (e.g. "red_cube") returns only that colour. `cubes` is a JSON array of
     {class_name, score, x, y, z, grasp_angle_deg} in the base frame (metres),
     sorted by score; x,y,z is the grasp point (z = cube centre, ~2.5 cm above
-    the table). ok=true even if no cube is found."""
+    the table). Feed x,y,z + grasp_angle_deg to pick_cube. ok=true even if no
+    cube is found."""
     det = _state["detector"]
     if det is None:
         return DetectCubes_Response(ok=False, message="skill not activated (no camera connection)", cubes="[]")
@@ -217,17 +230,20 @@ def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
 
 @vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/detect_objects")
 def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
-    """用头部相机拍一张图，让视觉大模型（VLM）按自然语言描述找出要抓的物体，返回其位置。
-    Unlike detect_cubes (fixed YOLO cube classes), this is open-vocabulary: the
-    LLM should call it whenever the user names an object by description — a
-    colour, a shape, text on it, or a spatial/relative hint (e.g. "红色的杯子",
-    "离机械臂最近的螺丝刀", "最右边的那个"). Pass that description as
+    """（首选检测工具）用头部相机拍一张图，让视觉大模型（VLM）按自然语言描述找出物体，返回其位置。
+    PREFERRED detector — call this FIRST for any perception need: "桌上有什么"、
+    "你看到了什么"、或按描述找物体（颜色/形状/文字/空间或相对位置，如 "红色的杯子"、
+    "离机械臂最近的螺丝刀"、"最右边的那个"）。It is open-vocabulary and also handles
+    cubes, so use it for cube queries too; only fall back to detect_cubes if this
+    call fails or the VLM is not configured. To list everything on the table,
+    pass a broad instruction like "桌面上所有的物体". Pass the description as
     `instruction`. `objects` is a JSON array of
     {class_name, score, x, y, z, grasp_angle_deg} in the base frame (metres),
-    which you then feed to pick_cube (x,y,z + grasp_angle_deg → angle_deg). Note
-    the VLM has no depth: z is assumed to be the standard table-level grasp
-    height, so this is best for objects resting on the table. ok=true even if no
-    matching object is found (objects=[])."""
+    which you feed to pick_cube (x,y,z + grasp_angle_deg → angle_deg; passing the
+    angle matters for elongated/tilted objects). Note the VLM has no depth: z is
+    assumed to be the standard table-level grasp height, so this is best for
+    objects resting on the table. ok=true even if no matching object is found
+    (objects=[])."""
     det = _state["vlm_detector"]
     if det is None:
         return DetectObjects_Response(
@@ -246,6 +262,38 @@ def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
     msg = (f"detected {len(objs)} object(s) for {req.instruction!r}" if objs
            else f"no object found for {req.instruction!r}")
     return DetectObjects_Response(ok=True, message=msg, objects=json.dumps(objs, ensure_ascii=False))
+
+
+@vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/verify_grasp")
+def verify_grasp(req: VerifyGrasp_Request) -> VerifyGrasp_Response:
+    """用头部相机复核一次抓取/放置是否成功（视觉验证）。Call this right after every
+    pick_cube / place_cube to confirm the outcome. It re-detects `instruction`
+    with the VLM and checks whether the object is now at `position` ("x,y", base
+    frame, metres — the spot you picked from / placed at):
+      * mode="pick"  → success=true if the object is GONE from there (lifted).
+      * mode="place" → success=true if the object is now THERE.
+    On success=false, re-run detect_objects to get the object's current position
+    and retry the pick/place. Returns ok=true if the check ran (VLM reachable),
+    with the pass/fail verdict in `success`."""
+    det = _state["vlm_detector"]
+    if det is None:
+        return VerifyGrasp_Response(
+            ok=False, success=False,
+            message="VLM not available (skill not activated, or VLM endpoint not configured)")
+    try:
+        x, y, _z = _resolve_position(req.position)
+    except ValueError as exc:
+        return VerifyGrasp_Response(ok=False, success=False, message=f"bad position: {exc}")
+    try:
+        with _state["lock"]:
+            res = det.verify(req.instruction, req.mode, (x, y),
+                             radius=_state["verify_match_radius"])
+    except ValueError as exc:
+        return VerifyGrasp_Response(ok=False, success=False, message=f"bad argument: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        log.exception("verify_grasp failed")
+        return VerifyGrasp_Response(ok=False, success=False, message=f"error: {exc}")
+    return VerifyGrasp_Response(ok=True, success=bool(res["success"]), message=str(res["message"]))
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────
@@ -280,6 +328,11 @@ def init(cfg: dict):
         _state["vlm_grasp_height"] = float(gh)
     except (TypeError, ValueError):
         return Err(f"vlm_grasp_height must be a number, got {gh!r}")
+    vmr = cfg.get("verify_match_radius", _state["verify_match_radius"])
+    try:
+        _state["verify_match_radius"] = float(vmr)
+    except (TypeError, ValueError):
+        return Err(f"verify_match_radius must be a number, got {vmr!r}")
     log.info("init ok: pick_z=%.3f urdf_path=%r model=%r calib=%r vlm=%s",
              _state["pick_z"], _state["urdf_path"], _state["model_path"], _state["calib_path"],
              (_state["vlm_model"] or "<unconfigured>"))
