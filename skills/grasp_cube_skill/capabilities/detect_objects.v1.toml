@@ -1,0 +1,14 @@
+# MCP-callable "find an object by description" tool. The LLM picks this up via
+# pilot when the user names something that isn't a plain cube — e.g.
+# "抓一下那个红色的杯子" / "把离你最近的螺丝刀拿起来" — the handler asks a
+# vision-language model to locate the target in a head-camera frame and reports
+# its base-frame position, which the LLM can then feed to pick_cube. Open
+# vocabulary, complementary to detect_cubes (fixed YOLO cube classes).
+[contract]
+id      = "robonix/skill/grasp_cube/detect_objects"
+version = "1"
+kind    = "skill"
+idl     = "grasp_cube/srv/DetectObjects.srv"
+
+[mode]
+type = "rpc"

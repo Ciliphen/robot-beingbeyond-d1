@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 """grasp_cube — detect cubes, pick one at a location, place it at another.
 
-Three LLM-callable MCP tools for the D1 dexterous hand:
+Four LLM-callable MCP tools for the D1 dexterous hand:
 
-  * detect_cubes(class_filter) — YOLO on a head-camera frame; report each cube's
-                                 base-frame position (feed x,y to pick_cube).
-  * pick_cube(position)        — move to the location, grasp a cube, lift and hold.
-  * place_cube(position)       — move to the location, release the held cube, lift.
+  * detect_cubes(class_filter)  — YOLO on a head-camera frame; report each cube's
+                                  base-frame position (feed x,y to pick_cube).
+  * detect_objects(instruction) — VLM on a head-camera frame; open-vocabulary,
+                                  locate an object by description (feed to pick_cube).
+  * pick_cube(position)         — move to the location, grasp an object, lift and hold.
+  * place_cube(position)        — move to the location, release the held object, lift.
 
 pick_cube / place_cube take a coordinate string ("x,y" / "x,y,z", base frame,
 metres) or a named spot; the caller (LLM/user) can get real coordinates from
@@ -39,6 +41,7 @@ from grasp_cube_mcp import (  # noqa: E402
     PickCube_Request, PickCube_Response,
     PlaceCube_Request, PlaceCube_Response,
     DetectCubes_Request, DetectCubes_Response,
+    DetectObjects_Request, DetectObjects_Response,
 )
 
 # Package root (the grasp_cube_skill dir holding models/, capabilities/, ...),
@@ -62,9 +65,14 @@ _state: dict = {
     "urdf_path":  "",
     "model_path": "",      # YOLO .pt (resolved in on_init; see models/README.md)
     "calib_path": "",      # hand-eye handeye_calib.npz (resolved in on_init)
-    "controller": None,
-    "detector":   None,    # CubeDetector, built in on_activate (camera + YOLO)
-    "lock":       threading.Lock(),
+    "vlm_base_url":     "",   # OpenAI-compatible VLM endpoint (env VLM_BASE_URL)
+    "vlm_api_key":      "",   # bearer token (env VLM_API_KEY)
+    "vlm_model":        "",   # model id, must accept images (env VLM_MODEL)
+    "vlm_grasp_height": 0.025,  # grasp Z above table for VLM hits (no depth)
+    "controller":  None,
+    "detector":    None,   # CubeDetector, built in on_activate (camera + YOLO)
+    "vlm_detector": None,  # VLMDetector, built in on_activate (camera + VLM)
+    "lock":        threading.Lock(),
 }
 
 
@@ -207,6 +215,39 @@ def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
     return DetectCubes_Response(ok=True, message=msg, cubes=json.dumps(cubes, ensure_ascii=False))
 
 
+@grasp_cube.mcp("robonix/skill/grasp_cube/detect_objects")
+def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
+    """用头部相机拍一张图，让视觉大模型（VLM）按自然语言描述找出要抓的物体，返回其位置。
+    Unlike detect_cubes (fixed YOLO cube classes), this is open-vocabulary: the
+    LLM should call it whenever the user names an object by description — a
+    colour, a shape, text on it, or a spatial/relative hint (e.g. "红色的杯子",
+    "离机械臂最近的螺丝刀", "最右边的那个"). Pass that description as
+    `instruction`. `objects` is a JSON array of
+    {class_name, score, x, y, z, grasp_angle_deg} in the base frame (metres),
+    which you then feed to pick_cube (x,y,z + grasp_angle_deg → angle_deg). Note
+    the VLM has no depth: z is assumed to be the standard table-level grasp
+    height, so this is best for objects resting on the table. ok=true even if no
+    matching object is found (objects=[])."""
+    det = _state["vlm_detector"]
+    if det is None:
+        return DetectObjects_Response(
+            ok=False,
+            message="VLM detection not available (skill not activated, or VLM endpoint not configured — set vlm_base_url/vlm_model or env VLM_BASE_URL/VLM_MODEL)",
+            objects="[]")
+    try:
+        with _state["lock"]:
+            objs = det.detect(req.instruction)
+    except ValueError as exc:
+        return DetectObjects_Response(ok=False, message=f"bad argument: {exc}", objects="[]")
+    except Exception as exc:  # noqa: BLE001
+        log.exception("detect_objects failed")
+        return DetectObjects_Response(ok=False, message=f"error: {exc}", objects="[]")
+
+    msg = (f"detected {len(objs)} object(s) for {req.instruction!r}" if objs
+           else f"no object found for {req.instruction!r}")
+    return DetectObjects_Response(ok=True, message=msg, objects=json.dumps(objs, ensure_ascii=False))
+
+
 # ── Lifecycle ────────────────────────────────────────────────────────
 @grasp_cube.on_init
 def init(cfg: dict):
@@ -228,8 +269,20 @@ def init(cfg: dict):
         str(cfg.get("calib_path", "") or os.environ.get("GRASP_CUBE_CALIB", "")),
         "models/handeye_calib.npz",
     )
-    log.info("init ok: pick_z=%.3f urdf_path=%r model=%r calib=%r",
-             _state["pick_z"], _state["urdf_path"], _state["model_path"], _state["calib_path"])
+    # VLM endpoint for detect_objects: config → env (the deployment's VLM_*).
+    # Left empty when unset — detect_objects then reports "not configured"
+    # while pick/place/detect_cubes stay fully functional.
+    _state["vlm_base_url"] = str(cfg.get("vlm_base_url", "") or os.environ.get("VLM_BASE_URL", ""))
+    _state["vlm_api_key"] = str(cfg.get("vlm_api_key", "") or os.environ.get("VLM_API_KEY", ""))
+    _state["vlm_model"] = str(cfg.get("vlm_model", "") or os.environ.get("VLM_MODEL", ""))
+    gh = cfg.get("vlm_grasp_height", _state["vlm_grasp_height"])
+    try:
+        _state["vlm_grasp_height"] = float(gh)
+    except (TypeError, ValueError):
+        return Err(f"vlm_grasp_height must be a number, got {gh!r}")
+    log.info("init ok: pick_z=%.3f urdf_path=%r model=%r calib=%r vlm=%s",
+             _state["pick_z"], _state["urdf_path"], _state["model_path"], _state["calib_path"],
+             (_state["vlm_model"] or "<unconfigured>"))
     return Ok()
 
 
@@ -260,6 +313,24 @@ def activate():
         model_path=_state["model_path"], calib_path=_state["calib_path"],
         urdf_path=_state["urdf_path"],
     )
+    # VLM detector is optional: only built when an endpoint is configured, and a
+    # failure here must not block pick/place/detect_cubes.
+    if _state["vlm_base_url"] and _state["vlm_model"]:
+        try:
+            from grasp_cube_skill.vlm_detector import VLMDetector
+            log.info("initialising VLM detector (model=%s) ...", _state["vlm_model"])
+            _state["vlm_detector"] = VLMDetector(
+                arm=arm, camera=camera, calib_path=_state["calib_path"],
+                base_url=_state["vlm_base_url"], api_key=_state["vlm_api_key"],
+                model=_state["vlm_model"], urdf_path=_state["urdf_path"],
+                grasp_height=_state["vlm_grasp_height"],
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("VLM detector init failed — detect_objects disabled")
+            _state["vlm_detector"] = None
+    else:
+        log.info("VLM endpoint not configured — detect_objects disabled")
+
     log.info("activated — ready to detect / pick / place")
     return Ok()
 
@@ -276,6 +347,7 @@ def deactivate():
             log.exception("controller shutdown failed")
     _state["controller"] = None
     _state["detector"] = None  # camera channel is auto-closed by the framework
+    _state["vlm_detector"] = None
     log.info("deactivated")
     return Ok()
 
@@ -290,6 +362,7 @@ def shutdown():
         except Exception:  # noqa: BLE001
             pass
     _state["detector"] = None
+    _state["vlm_detector"] = None
     log.info("shutdown")
 
 

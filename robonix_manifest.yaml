@@ -60,11 +60,15 @@ primitive:
 service: []
 
 # ── Skills ───────────────────────────────────────────────────────────
-# grasp_cube: three MCP tools (detect_cubes / pick_cube / place_cube). pilot
-# dispatches to it through executor when the user asks to find / pick up / put
-# down an object (pick_cube / place_cube also take an optional grasp angle and
-# gripper aperture). detect_cubes needs the YOLO weights + hand-eye calibration under
+# grasp_cube: four MCP tools (detect_cubes / detect_objects / pick_cube /
+# place_cube). pilot dispatches to it through executor when the user asks to
+# find / pick up / put down an object (pick_cube / place_cube also take an
+# optional grasp angle and gripper aperture). detect_cubes (YOLO, fixed cube
+# classes) needs the weights + hand-eye calibration under
 # ./skills/grasp_cube_skill/models/ (see that dir's README; git-ignored).
+# detect_objects (open-vocabulary via a VLM) shares that calibration and needs a
+# VLM endpoint — configured below or via env VLM_BASE_URL/VLM_API_KEY/VLM_MODEL;
+# left empty it is simply disabled while the other tools keep working.
 skill:
   - name: grasp_cube
     path: ./skills/grasp_cube_skill
@@ -75,3 +79,11 @@ skill:
       # ./models/handeye_calib.npz (relative paths resolve to the skill package).
       model_path: ""
       calib_path: ""
+      # VLM endpoint for detect_objects. Empty → falls back to env
+      # VLM_BASE_URL / VLM_API_KEY / VLM_MODEL (the deployment's VLM). Model must
+      # accept image input. vlm_grasp_height (m) is the assumed grasp Z above the
+      # table since the VLM gives no depth.
+      vlm_base_url: ""
+      vlm_api_key: ""
+      vlm_model: ""
+      vlm_grasp_height: 0.025
