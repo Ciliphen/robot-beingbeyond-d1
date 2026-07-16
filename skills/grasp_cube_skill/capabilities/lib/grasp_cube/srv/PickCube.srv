@@ -1,7 +1,9 @@
-# Move the arm to a target location and grasp a cube there (then hold it).
-# Request: where to pick up.
-# Response: whether a cube was grasped, plus a human-readable message.
+# Move the arm to a target location and grasp an object there (then hold it).
+# Request: where to pick up, plus optional grasp angle and gripper aperture.
+# Response: whether an object was grasped, plus a human-readable message.
 string position   # required: where to pick — "x,y" / "x,y,z" (base frame, metres) or a named spot (e.g. "中间")
+string angle_deg  # optional: grasp yaw angle in degrees (hand rotation about vertical); empty = default orientation
+string gripper    # optional: how tightly to close, 0.0 (open) / 0.5 (standard grasp) / 1.0 (tightest); empty = standard grasp
 ---
-bool ok           # true if the cube was grasped (hand closed on an object)
+bool ok           # true if the object was grasped (hand closed on an object)
 string message    # human-readable status / error detail

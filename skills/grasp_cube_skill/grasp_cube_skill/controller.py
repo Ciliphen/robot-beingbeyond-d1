@@ -41,6 +41,7 @@ from block_grasp.config import (
     GRASP_OK_MAX,
     GRASP_OK_MIN,
     GRAVITY_SAG_FACTOR,
+    HAND_CLOSE,
     HAND_GRASP,
     HAND_OPEN,
     IK_FAIL_THRESHOLD,
@@ -161,6 +162,37 @@ class GraspCubeController:
         dist = math.sqrt(x * x + y * y)
         return GRAVITY_SAG_FACTOR * dist ** 3
 
+    @staticmethod
+    def _j6_offset_rad(angle_deg: float | None) -> float:
+        """Grasp/approach angle (degrees) → joint_6 (wrist roll) offset in
+        radians. ``None`` → 0 (default orientation). The angle is applied to the
+        wrist *after* IK (see ``_interpolate_and_move``), so it rotates the hand
+        about the vertical without disturbing the solved EE position — matching
+        the D1 block_grasp stack. No cube-only 90° symmetry wrap here: an object
+        may need a specific orientation, so the caller's angle is used as given
+        (only normalised to the shortest wrist path at apply time)."""
+        return 0.0 if angle_deg is None else math.radians(float(angle_deg))
+
+    def _hand_vector(self, fraction: float) -> np.ndarray:
+        """Hand joint vector for a given open/close amount, piecewise-interpolated
+        across the three calibrated D1 poses (all 6-D normalised, 0=open..1=closed,
+        thumb kept opposed):
+
+            0.0 → HAND_OPEN   (fully open)
+            0.5 → HAND_GRASP  (the tuned ~4.5 cm grasp — the default)
+            1.0 → HAND_CLOSE  (tightest, for smaller objects)
+
+        ``fraction`` is clamped to [0, 1]; 0.0 / 0.5 / 1.0 reproduce the anchor
+        poses exactly. The two halves are interpolated separately so HAND_GRASP
+        stays reachable rather than being averaged away."""
+        f = float(np.clip(fraction, 0.0, 1.0))
+        open_v = np.asarray(HAND_OPEN, dtype=float)
+        grasp_v = np.asarray(HAND_GRASP, dtype=float)
+        close_v = np.asarray(HAND_CLOSE, dtype=float)
+        if f <= 0.5:
+            return open_v + (f / 0.5) * (grasp_v - open_v)
+        return grasp_v + ((f - 0.5) / 0.5) * (close_v - grasp_v)
+
     def _make_target_pose(self, x: float, y: float, z: float) -> np.ndarray:
         T = np.eye(4)
         T[:3, :3] = self._R_target
@@ -172,8 +204,13 @@ class GraspCubeController:
         T_target: np.ndarray,
         step_size: float = INTERP_STEP_SIZE,
         z_weight: float = IK_Z_WEIGHT,
+        j6_offset_rad: float = 0.0,
     ) -> bool:
-        """Move EE to target pose using SLSQP IK with linear interpolation."""
+        """Move EE to target pose using SLSQP IK with linear interpolation.
+
+        ``j6_offset_rad`` is added to joint_6 after each IK step so the wrist
+        rotates to the requested grasp angle without affecting position accuracy.
+        """
         q_head, q_arm = self._get_joint_state()
         T_cur = self._kin.ee_in_base(q_head, q_arm)
         p_start = T_cur[:3, 3].copy()
@@ -210,6 +247,11 @@ class GraspCubeController:
                     print(f"  [IK] joint jump {math.degrees(dq_max):.0f}° at step "
                           f"{i}/{n_steps} (near singularity), aborting.", flush=True)
                     return False
+                # Apply the grasp angle directly to joint_6 (wrist roll),
+                # normalised to the shortest path from the current joint_6.
+                q_as[5] += j6_offset_rad
+                diff = q_as[5] - q_arm[5]
+                q_as[5] = q_arm[5] + (diff + math.pi) % (2 * math.pi) - math.pi
                 cmd = np.concatenate([q_hs, q_as])
                 self._robot.set_positions(cmd)
                 time.sleep(0.02)
@@ -224,9 +266,12 @@ class GraspCubeController:
             self._robot.wait_until_reached(cmd, active_joint_indices=range(2, 8))
         return True
 
-    def _refine_and_move(self, T_target: np.ndarray, z_weight: float = IK_Z_WEIGHT) -> float:
+    def _refine_and_move(
+        self, T_target: np.ndarray, z_weight: float = IK_Z_WEIGHT, j6_offset_rad: float = 0.0
+    ) -> float:
         """Fine-positioning with SLSQP multi-restart IK. Returns the final
-        position error (metres)."""
+        position error (metres). ``j6_offset_rad`` is added to joint_6 after IK
+        (wrist roll for the grasp angle)."""
         q_head, q_arm = self._get_joint_state()
         T_target = T_target.copy()
         T_target[2, 3] += self._z_sag(T_target[0, 3], T_target[1, 3])
@@ -247,6 +292,11 @@ class GraspCubeController:
                       f"(near singularity), keeping current pose (err={cur_err:.4f}).",
                       flush=True)
                 return cur_err
+            # Apply the grasp angle directly to joint_6 (wrist roll),
+            # normalised to the shortest path from the current joint_6.
+            q_as[5] += j6_offset_rad
+            diff = q_as[5] - q_arm[5]
+            q_as[5] = q_arm[5] + (diff + math.pi) % (2 * math.pi) - math.pi
             cmd = np.concatenate([q_hs, q_as])
             self._robot.set_positions(cmd)
             self._robot.wait_until_reached(cmd, active_joint_indices=range(2, 8))
@@ -255,12 +305,15 @@ class GraspCubeController:
             print(f"  [IK] SLSQP refine error: {e}", flush=True)
             return 999.0
 
-    def _move_to_pose(self, T_target: np.ndarray, refine: bool = True) -> bool:
-        """Move EE to target pose: SLSQP interpolation + multi-restart refinement."""
-        if not self._interpolate_and_move(T_target):
+    def _move_to_pose(
+        self, T_target: np.ndarray, refine: bool = True, j6_offset_rad: float = 0.0
+    ) -> bool:
+        """Move EE to target pose: SLSQP interpolation + multi-restart refinement.
+        ``j6_offset_rad`` rotates the wrist (joint_6) to the requested grasp angle."""
+        if not self._interpolate_and_move(T_target, j6_offset_rad=j6_offset_rad):
             return False
         if refine:
-            err = self._refine_and_move(T_target)
+            err = self._refine_and_move(T_target, j6_offset_rad=j6_offset_rad)
             p = T_target[:3, 3]
             print(f"  → ({p[0]:.3f}, {p[1]:.3f}, {p[2]:.3f})  err={err:.4f}", flush=True)
             return err < 0.05
@@ -268,37 +321,51 @@ class GraspCubeController:
 
     # ── Public API (called by the skill's MCP handlers) ─────────────────────
 
-    def pick(self, x: float, y: float, z: float) -> Dict[str, object]:
-        """Go to (x, y, z), grasp a cube there, lift and hold.
+    def pick(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        angle_deg: float | None = None,
+        gripper: float | None = None,
+    ) -> Dict[str, object]:
+        """Go to (x, y, z), grasp an object there, lift and hold.
 
         Sequence: open → approach above → descend → close → lift → check.
+        ``angle_deg`` rotates the wrist (joint_6) to align the hand with the
+        object (None → default orientation); ``gripper`` sets how tightly the
+        hand closes, 0.0 (open) – 0.5 (standard grasp) – 1.0 (tightest) (None →
+        standard grasp, i.e. the original behaviour).
         Returns a JSON-serialisable dict; sets the holding flag on success.
         """
         z_approach = z + APPROACH_HEIGHT_OFFSET
         loc = [round(x, 3), round(y, 3), round(z, 3)]
+        j6 = self._j6_offset_rad(angle_deg)
+        grasp_vec = self._hand_vector(0.5 if gripper is None else gripper)
 
         print("[Pick] Opening hand ...", flush=True)
         self._hand.set_joint_pos(HAND_OPEN)
         time.sleep(CATCH_DELAY_S)
 
-        print(f"[Pick] Approaching above ({x:.3f}, {y:.3f}, {z_approach:.3f})", flush=True)
+        print(f"[Pick] Approaching above ({x:.3f}, {y:.3f}, {z_approach:.3f}) "
+              f"j6={math.degrees(j6):.0f}°", flush=True)
         T_approach = self._make_target_pose(x, y, z_approach)
-        if not self._interpolate_and_move(T_approach):
-            if self._refine_and_move(T_approach) > 0.05:
+        if not self._interpolate_and_move(T_approach, j6_offset_rad=j6):
+            if self._refine_and_move(T_approach, j6_offset_rad=j6) > 0.05:
                 return {"ok": False, "location": loc, "message": "approach failed (IK)"}
         time.sleep(CATCH_DELAY_S)
 
         print(f"[Pick] Descending to ({x:.3f}, {y:.3f}, {z:.3f})", flush=True)
-        if not self._move_to_pose(self._make_target_pose(x, y, z), refine=True):
+        if not self._move_to_pose(self._make_target_pose(x, y, z), refine=True, j6_offset_rad=j6):
             return {"ok": False, "location": loc, "message": "descent failed (IK)"}
         time.sleep(CATCH_DELAY_S)
 
         print("[Pick] Closing hand ...", flush=True)
-        self._hand.set_joint_pos(HAND_GRASP)
+        self._hand.set_joint_pos(grasp_vec)
         time.sleep(CATCH_DELAY_S)
 
         print("[Pick] Lifting ...", flush=True)
-        if not self._interpolate_and_move(T_approach):
+        if not self._interpolate_and_move(T_approach, j6_offset_rad=j6):
             print("[Pick] Lift failed (object may still be grasped).", flush=True)
         time.sleep(CATCH_DELAY_S)
 
@@ -312,38 +379,53 @@ class GraspCubeController:
               f"(avg 4-finger pos={avg_pos:.2f}, expected [{GRASP_OK_MIN:.1f}–{GRASP_OK_MAX:.1f}])",
               flush=True)
         return {"ok": bool(grasp_ok), "location": loc,
-                "message": "cube grasped" if grasp_ok else "grasp failed (no object / slipped)"}
+                "message": "object grasped" if grasp_ok else "grasp failed (no object / slipped)"}
 
-    def place(self, x: float, y: float, z: float) -> Dict[str, object]:
-        """Go to (x, y, z), release the held cube, lift.
+    def place(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        angle_deg: float | None = None,
+        gripper: float | None = None,
+    ) -> Dict[str, object]:
+        """Go to (x, y, z), release the held object, lift.
 
-        Sequence: approach above → descend → open → lift. Clears the holding
-        flag. Warns (but proceeds) if no successful pick preceded this.
+        Sequence: approach above → descend → open → lift. ``angle_deg`` rotates
+        the wrist (joint_6) for the approach (None → default orientation);
+        ``gripper`` sets the release aperture on the same 0.0 (fully open) – 0.5
+        (standard grasp) – 1.0 (tightest) scale (None → fully open, i.e. the
+        original behaviour — higher values keep the hand more closed and may not
+        release). Clears the holding flag. Warns (but proceeds) if no successful
+        pick preceded this.
         """
         z_approach = z + APPROACH_HEIGHT_OFFSET
         loc = [round(x, 3), round(y, 3), round(z, 3)]
+        j6 = self._j6_offset_rad(angle_deg)
+        release_vec = self._hand_vector(0.0 if gripper is None else gripper)
         if not self._holding:
-            print("[Place] Warning: no cube recorded as held; placing anyway.", flush=True)
+            print("[Place] Warning: no object recorded as held; placing anyway.", flush=True)
 
-        print(f"[Place] Approaching ({x:.3f}, {y:.3f}, {z_approach:.3f})", flush=True)
+        print(f"[Place] Approaching ({x:.3f}, {y:.3f}, {z_approach:.3f}) "
+              f"j6={math.degrees(j6):.0f}°", flush=True)
         T_approach = self._make_target_pose(x, y, z_approach)
-        if not self._interpolate_and_move(T_approach):
+        if not self._interpolate_and_move(T_approach, j6_offset_rad=j6):
             return {"ok": False, "location": loc, "message": "approach failed (IK)"}
         time.sleep(CATCH_DELAY_S)
 
         print(f"[Place] Descending to ({x:.3f}, {y:.3f}, {z:.3f})", flush=True)
-        if not self._move_to_pose(self._make_target_pose(x, y, z), refine=True):
+        if not self._move_to_pose(self._make_target_pose(x, y, z), refine=True, j6_offset_rad=j6):
             return {"ok": False, "location": loc, "message": "descent failed (IK)"}
         time.sleep(CATCH_DELAY_S)
 
         print("[Place] Opening hand ...", flush=True)
-        self._hand.set_joint_pos(HAND_OPEN)
+        self._hand.set_joint_pos(release_vec)
         time.sleep(CATCH_DELAY_S)
         self._holding = False
 
-        if not self._interpolate_and_move(T_approach):
+        if not self._interpolate_and_move(T_approach, j6_offset_rad=j6):
             return {"ok": False, "location": loc, "message": "released but lift failed"}
-        return {"ok": True, "location": loc, "message": "cube placed"}
+        return {"ok": True, "location": loc, "message": "object placed"}
 
     def move_home(self) -> None:
         """Open the hand and park the arm at a safe pose (clears the workspace)."""
