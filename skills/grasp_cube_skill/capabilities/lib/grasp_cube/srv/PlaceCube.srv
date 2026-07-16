@@ -1,7 +1,7 @@
 # Move the arm to a target location and release the held object there.
 # Request: where to put down, plus optional approach angle and release aperture.
 # Response: whether the place completed, plus a human-readable message.
-string position   # required: where to place — "x,y" / "x,y,z" (base frame, metres) or a named spot (e.g. "中间")
+string position   # required: where to place — "x,y" (on the table) / "x,y,z" or a named spot (base frame, metres). z = where the held object's centre is released; to stack on another object use z = base object's z + one object height (5 cm cube: base_z + 0.05)
 string angle_deg  # optional: approach yaw angle in degrees (hand rotation about vertical); empty = default orientation
 string gripper    # optional: release aperture, 0.0 (fully open) / 0.5 (grasp) / 1.0 (tightest); empty = fully open
 ---

@@ -93,8 +93,9 @@ class CubeDetector:
         """Aim the head, grab a frame, run YOLO, and return the detected cubes.
 
         Each cube is ``{class_name, score, x, y, z, grasp_angle_deg}`` in the
-        base frame (metres / degrees), sorted by score descending. ``x, y`` are
-        the cube's grasp point — feed them straight to ``pick_cube``.
+        base frame (metres / degrees), sorted by score descending. ``x, y, z``
+        are the grasp point (z = cube centre, ~2.5 cm above the table) — feed
+        them straight to ``pick_cube``.
         """
         # 1. Aim the head camera at the table (the pose the homography was
         #    calibrated at) and let it settle before grabbing a frame.
@@ -139,7 +140,11 @@ class CubeDetector:
             # Clamp to the reachable workspace around the current EE.
             wx = float(np.clip(wx, ws_x0 - MAX_DXY, ws_x0 + MAX_DXY))
             wy = float(np.clip(wy, ws_y0 - MAX_DXY, ws_y0 + MAX_DXY))
-            z_top = z_tbl + BLOCK_SIZE
+            # Grasp height = cube centre (~2.5 cm above the table for a 5 cm
+            # cube), NOT the top face — pick_cube descends straight to this z,
+            # so reporting the top face would leave the hand grabbing above the
+            # cube. z_tbl comes from the hand-eye calibration table plane.
+            z_grasp = z_tbl + BLOCK_SIZE / 2.0
 
             grasp_angle = estimate_grasp_angle_deg(u, v, w, h, np.rad2deg(r))
             cubes.append({
@@ -147,7 +152,7 @@ class CubeDetector:
                 "score": round(float(score), 3),
                 "x": round(wx, 3),
                 "y": round(wy, 3),
-                "z": round(float(z_top), 3),
+                "z": round(float(z_grasp), 3),
                 "grasp_angle_deg": round(float(grasp_angle), 1),
             })
 

@@ -152,7 +152,12 @@ def pick_cube(req: PickCube_Request) -> PickCube_Response:
 def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
     """放置物体：把机械臂移动到指定位置，松开夹住的物体放下。The LLM should call
     this after pick_cube to put the held object down. `position` is a coordinate
-    string "x,y" / "x,y,z" (base frame, metres) or a named spot (e.g. "中间").
+    string "x,y" / "x,y,z" (base frame, metres) or a named spot (e.g. "中间"). The
+    given z is where the held object's centre is released, so it sets the stacking
+    height. To STACK the held object on top of another object, pass an explicit z
+    = that base object's z (from detect_cubes, which reports each object's centre)
+    + one object height; for a standard 5 cm cube that is base_z + 0.05. Omit z
+    ("x,y", z = the table-level pick_z) to place directly on the table.
     Optional `angle_deg` sets the approach yaw angle in degrees (hand rotation
     about vertical; empty = default orientation) and `gripper` sets the release
     aperture on the same 0.0 (fully open) – 0.5 (grasp) – 1.0 (tightest) scale
@@ -179,10 +184,11 @@ def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
 def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
     """用头部相机拍一张图，跑 YOLO 识别桌面上的积木，返回每个积木的位置。The LLM
     should call this to see what cubes are on the table and where they are, then
-    feed a cube's x,y to pick_cube. Optional `class_filter` (e.g. "red_cube")
+    feed a cube's x,y,z to pick_cube. Optional `class_filter` (e.g. "red_cube")
     returns only that colour. `cubes` is a JSON array of
     {class_name, score, x, y, z, grasp_angle_deg} in the base frame (metres),
-    sorted by score; x,y is the grasp point. ok=true even if no cube is found."""
+    sorted by score; x,y,z is the grasp point (z = cube centre, ~2.5 cm above
+    the table). ok=true even if no cube is found."""
     det = _state["detector"]
     if det is None:
         return DetectCubes_Response(ok=False, message="skill not activated (no camera connection)", cubes="[]")
