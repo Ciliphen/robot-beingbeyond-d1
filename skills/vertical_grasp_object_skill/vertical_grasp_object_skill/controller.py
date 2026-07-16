@@ -168,10 +168,20 @@ class GraspCubeController:
         radians. ``None`` → 0 (default orientation). The angle is applied to the
         wrist *after* IK (see ``_interpolate_and_move``), so it rotates the hand
         about the vertical without disturbing the solved EE position — matching
-        the D1 block_grasp stack. No cube-only 90° symmetry wrap here: an object
-        may need a specific orientation, so the caller's angle is used as given
-        (only normalised to the shortest wrist path at apply time)."""
-        return 0.0 if angle_deg is None else math.radians(float(angle_deg))
+        the D1 block_grasp stack.
+
+        Wrapped to [-90°, +90°] first: a two-finger gripper is 180°-symmetric, so
+        grasping at θ and θ±180° is physically identical — folding to the
+        half-turn keeps the wrist within range and picks the shorter roll (e.g. a
+        requested 170° becomes -10°). This is the gripper's own symmetry and
+        holds for ANY object. Object-shape symmetries (a cube's extra 90°, so 30°
+        ≡ 60° ≡ -30°) are NOT applied here — the skill can't assume every target
+        is square — so the caller may still pass a shape-equivalent angle; see the
+        pick_cube docstring."""
+        if angle_deg is None:
+            return 0.0
+        a = ((float(angle_deg) + 90.0) % 180.0) - 90.0   # wrap to [-90, 90)
+        return math.radians(a)
 
     def _hand_vector(self, fraction: float) -> np.ndarray:
         """Hand joint vector for a given open/close amount, piecewise-interpolated

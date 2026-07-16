@@ -139,7 +139,12 @@ serialised by an internal lock — issue them one at a time.
   table Z at that XY + the object's grasp height. The shared plumbing lives in
   `HeadCameraProjector`; `CubeDetector` adds YOLO, `VLMDetector` adds the VLM.
 - **Grasp angle** is applied as a joint-6 (wrist-roll) offset *after* IK, so the
-  target position stays exact regardless of the requested yaw.
+  target position stays exact regardless of the requested yaw. It is wrapped to
+  `[-90°, 90°]` first — a two-finger gripper is 180°-symmetric (θ ≡ θ±180°), so
+  this keeps the wrist in range and takes the shorter roll. Object-shape
+  symmetry is left to the caller: a square/cube also has θ ≡ θ+90° ≡ -θ (so
+  30° ≡ 60° ≡ -30° are one grasp), which the pilot is told about in the
+  `pick_cube` docstring rather than assumed for every target.
 - **Gripper aperture** interpolates the D1 hand pose across three anchors:
   `0.0` = `HAND_OPEN`, `0.5` = `HAND_GRASP` (standard), `1.0` = `HAND_CLOSE`.
 - **VLM call.** `detect_objects` POSTs the frame (base64 JPEG) + a Chinese

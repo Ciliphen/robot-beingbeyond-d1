@@ -143,10 +143,15 @@ def pick_cube(req: PickCube_Request) -> PickCube_Response:
     larger value for objects smaller than 5 cm. Prefer passing the
     `grasp_angle_deg` from detect_objects/detect_cubes as `angle_deg` — for
     elongated/tilted objects the right yaw is what makes the grasp succeed.
-    Returns ok=true if an object was actually grasped. AFTER a successful pick,
-    call verify_grasp(mode="pick") to visually confirm it; if that reports
-    success=false, re-run detect_objects to get the object's current position
-    and try pick_cube again."""
+    `angle_deg` is symmetric: the gripper has two fingers, so θ and θ±180° give
+    the identical grasp (wrapped to [-90°,90°] automatically — never fight the
+    wrist over a large angle, pass the small equivalent). A SQUARE / CUBE has
+    extra symmetry: θ ≡ θ+90° and θ ≡ -θ, so e.g. 30° ≡ 60° ≡ -30° are the SAME
+    grasp — just pass the detector's grasp_angle_deg as-is and don't try to hit a
+    precise value (0°/90° grasp across the flat faces; the detector already
+    returns a face-aligned angle for cubes). Returns ok=true if an object was
+    actually grasped. Do NOT verify here — go straight to place_cube; success is
+    checked once at the end (see place_cube / verify_grasp)."""
     ctrl = _controller_or_none()
     if ctrl is None:
         return PickCube_Response(ok=False, message="skill not activated (no arm/hand connection)")
