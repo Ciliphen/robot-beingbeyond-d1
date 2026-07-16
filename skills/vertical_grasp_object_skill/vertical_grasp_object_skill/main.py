@@ -178,9 +178,12 @@ def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
     Optional `angle_deg` sets the approach yaw angle in degrees (hand rotation
     about vertical; empty = default orientation) and `gripper` sets the release
     aperture on the same 0.0 (fully open) – 0.5 (grasp) – 1.0 (tightest) scale
-    (empty = fully open). AFTER placing, call verify_grasp(mode="place") to
-    confirm the object is actually at the target; if success=false, re-detect
-    and place again."""
+    (empty = fully open). After releasing, the arm automatically parks aside to
+    clear the workspace so the camera has an unobstructed view. Then call
+    verify_grasp(mode="place") ONCE to confirm the object actually reached the
+    target; if success=false, re-detect and run the pick→place again. (Do NOT
+    verify between pick and place — only after this final placed-and-parked
+    state.)"""
     ctrl = _controller_or_none()
     if ctrl is None:
         return PlaceCube_Response(ok=False, message="skill not activated (no arm/hand connection)")
@@ -193,6 +196,14 @@ def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
     try:
         with _state["lock"]:
             res = ctrl.place(x, y, z, angle_deg=angle_deg, gripper=gripper)
+            # Park aside so the placed spot is unobstructed for verify_grasp.
+            # Only when the release succeeded — on failure leave the arm as-is
+            # for diagnosis.
+            if res.get("ok"):
+                try:
+                    ctrl.move_home()
+                except Exception:  # noqa: BLE001
+                    log.exception("move_home after place failed (placement still ok)")
         return PlaceCube_Response(ok=bool(res["ok"]), message=str(res["message"]))
     except Exception as exc:  # noqa: BLE001
         log.exception("place_cube failed")
@@ -266,15 +277,18 @@ def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
 
 @vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/verify_grasp")
 def verify_grasp(req: VerifyGrasp_Request) -> VerifyGrasp_Response:
-    """用头部相机复核一次抓取/放置是否成功（视觉验证）。Call this right after every
-    pick_cube / place_cube to confirm the outcome. It re-detects `instruction`
-    with the VLM and checks whether the object is now at `position` ("x,y", base
-    frame, metres — the spot you picked from / placed at):
-      * mode="pick"  → success=true if the object is GONE from there (lifted).
-      * mode="place" → success=true if the object is now THERE.
-    On success=false, re-run detect_objects to get the object's current position
-    and retry the pick/place. Returns ok=true if the check ran (VLM reachable),
-    with the pass/fail verdict in `success`."""
+    """用头部相机复核物体是否被移动到了目标位置（视觉验证）。Call this ONCE after
+    place_cube (the arm has parked aside by then, so the view is clear) — a whole
+    pick→place is checked at the end, not between the two steps. It re-detects
+    `instruction` with the VLM and checks whether the object is now at `position`
+    ("x,y", base frame, metres):
+      * mode="place" → success=true if the object is now AT the target (the
+        normal check: did the pick+place move it there).
+      * mode="pick"  → success=true if the object is GONE from `position`
+        (available if you ever need to confirm a spot was cleared).
+    On success=false, re-run detect_objects for the object's current position and
+    redo the pick→place. Returns ok=true if the check ran (VLM reachable), with
+    the pass/fail verdict in `success`."""
     det = _state["vlm_detector"]
     if det is None:
         return VerifyGrasp_Response(

@@ -83,7 +83,9 @@ Move to a location, release the held object, lift.
 | `angle_deg` | string | ""      | Optional approach yaw in degrees; empty = default orientation.                           |
 | `gripper`   | string | ""      | Optional release aperture on the same `0.0`–`0.5`–`1.0` scale; empty = fully open.       |
 
-Returns `{ok, message}`.
+Returns `{ok, message}`. On a successful release the arm automatically parks
+aside (clears the workspace) so the placed spot is unobstructed for
+`verify_grasp`.
 
 **Stacking**: to place the held object on top of another, pass an explicit `z` =
 the base object's `z` (from `detect_objects` / `detect_cubes`, which report each
@@ -92,19 +94,21 @@ object's centre) + one object height; for a standard 5 cm cube that is
 
 ### `robonix/skill/vertical_grasp_object/verify_grasp`
 
-Visually confirm a pick / place with the VLM: re-detect the object and check
-whether it is now at `position`. Call after every `pick_cube` / `place_cube`.
+Visually confirm the object reached its target with the VLM: re-detect the
+object and check whether it is now at `position`. Call **once after
+`place_cube`** (the arm has parked aside, so the view is clear) — a whole
+pick→place is checked at the end, not between the two steps.
 
 | param         | type   | default | meaning                                                          |
 |---------------|--------|---------|------------------------------------------------------------------|
 | `instruction` | string | —       | Description of the object (as given to `detect_objects`).        |
-| `mode`        | string | —       | `"pick"` (success iff the object is now ABSENT there — lifted) or `"place"` (success iff now PRESENT there). |
-| `position`    | string | —       | `"x,y"` (base frame, m) the object was picked from / placed at.  |
+| `mode`        | string | —       | `"place"` (normal: success iff the object is now PRESENT at the target) or `"pick"` (success iff now ABSENT there — for confirming a spot was cleared). |
+| `position`    | string | —       | `"x,y"` (base frame, m) the object was placed at (or picked from, for `pick`). |
 
 Returns `{ok, success, message}`. `ok=true` if the check ran (VLM reachable);
-`success` is the pick/place verdict. On `success=false`, re-run `detect_objects`
-for the current position and retry. A detection within `verify_match_radius`
-(config, default 5 cm) of `position` counts as "at" it.
+`success` is the verdict. On `success=false`, re-run `detect_objects` for the
+current position and redo the pick→place. A detection within
+`verify_match_radius` (config, default 5 cm) of `position` counts as "at" it.
 
 ## Usage pattern (recommended closed loop)
 
@@ -113,15 +117,18 @@ for the current position and retry. A detection within `verify_match_radius`
    is unavailable.)
 2. **Pick** — call `pick_cube` with that `position`, passing `grasp_angle_deg`
    as `angle_deg` (essential for tilted/elongated objects). Blocks until done.
-3. **Verify pick** — call `verify_grasp(mode="pick", position=<pick spot>)`. If
-   `success=false`, go back to step 1 (re-detect) and retry the pick.
-4. **Place** — call `place_cube` with the destination `position` (add a `z`
-   offset to stack).
-5. **Verify place** — call `verify_grasp(mode="place", position=<place spot>)`.
-   If `success=false`, re-detect and place again.
+   Do **not** verify here.
+3. **Place** — call `place_cube` with the destination `position` (add a `z`
+   offset to stack). On success the arm automatically parks aside, clearing the
+   camera's view of the target.
+4. **Verify (once, at the end)** — call
+   `verify_grasp(mode="place", position=<place spot>)` to confirm the object
+   actually reached the target. If `success=false`, go back to step 1 (re-detect)
+   and redo the pick→place.
 
-Detection, pick/place and verify share the arm, so calls are serialised by an
-internal lock — issue them one at a time.
+Verification happens only at this final placed-and-parked state, not between
+pick and place. Detection, pick/place and verify share the arm, so calls are
+serialised by an internal lock — issue them one at a time.
 
 ## Behaviour
 
