@@ -1,4 +1,4 @@
-# Runtime config accepted by the grasp_cube skill.
+# Runtime config accepted by the vertical_grasp_object skill.
 #
 # This file documents the mapping passed as this package's `config:` value in
 # robonix_manifest.yaml. An empty `config: {}` uses the defaults below.
@@ -19,7 +19,7 @@ config:
   # package root; the file is git-ignored — see models/README.md.
   model_path: ""
 
-  # string, default: "" → ./models/handeye_calib.npz (env: GRASP_CUBE_CALIB).
+  # string, default: "" → ./models/handeye_calib.npz (env: VERTICAL_GRASP_OBJECT_CALIB).
   # Hand-eye calibration (camera->base homography, head pose, table Z) for
   # detect_cubes AND detect_objects (both share the same projection). Robot-
   # specific; git-ignored — see models/README.md.

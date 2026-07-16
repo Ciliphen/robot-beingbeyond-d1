@@ -2,7 +2,7 @@
 description: Detect an object on the table (YOLO cubes, or open-vocabulary via a VLM) and pick it up / place it down with the D1 dexterous hand — optional grasp angle and gripper aperture.
 ---
 
-# grasp_cube — detect / pick / place objects on the table
+# 垂直抓取物体 (vertical_grasp_object) — detect / pick / place objects on the table
 
 Perceives objects on the table with the head camera and manipulates them with
 the D1 6-DoF arm + dexterous hand. Two detection paths — a fixed YOLO-OBB cube
@@ -17,11 +17,11 @@ projection run locally (pure compute, reused from the Beingbeyond_D1
 
 ## Interface (4 MCP tools)
 
-All under the `robonix/skill/grasp_cube/*` namespace. Coordinates are base-frame
+All under the `robonix/skill/vertical_grasp_object/*` namespace. Coordinates are base-frame
 metres; a location string is `"x,y"` (Z = configured `pick_z`), `"x,y,z"`, or a
 named spot (e.g. `"中间"`). ASCII and full-width commas both parse.
 
-### `robonix/skill/grasp_cube/detect_cubes`
+### `robonix/skill/vertical_grasp_object/detect_cubes`
 
 Detect cubes on the table with YOLO-OBB (fixed, trained cube classes).
 
@@ -34,7 +34,7 @@ Returns `{ok, message, cubes}`. `cubes` is a JSON array of
 score; `x, y, z` is the grasp point (z = cube centre, ~2.5 cm above the table).
 `ok=true` even if no cube is found.
 
-### `robonix/skill/grasp_cube/detect_objects`
+### `robonix/skill/vertical_grasp_object/detect_objects`
 
 Detect an arbitrary object by natural-language description with a
 vision-language model (open vocabulary — **not** limited to the YOLO cube
@@ -54,7 +54,7 @@ schema as `detect_cubes`, so it feeds straight into `pick_cube` (x,y,z +
 grasp height above the calibrated table plane (`vlm_grasp_height`). Best for
 objects resting on the table; objects at other heights will be off in Z.
 
-### `robonix/skill/grasp_cube/pick_cube`
+### `robonix/skill/vertical_grasp_object/pick_cube`
 
 Move to a location, grasp the object there, lift and hold.
 
@@ -66,7 +66,7 @@ Move to a location, grasp the object there, lift and hold.
 
 Returns `{ok, message}`. `ok=true` iff the hand actually closed on an object.
 
-### `robonix/skill/grasp_cube/place_cube`
+### `robonix/skill/vertical_grasp_object/place_cube`
 
 Move to a location, release the held object, lift.
 

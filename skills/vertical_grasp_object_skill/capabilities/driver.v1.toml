@@ -2,7 +2,7 @@
 # CMD_ACTIVATE on skills (they stay at INACTIVE). The executor
 # fires CMD_ACTIVATE just-in-time on the first MCP call.
 [contract]
-id      = "robonix/skill/grasp_cube/driver"
+id      = "robonix/skill/vertical_grasp_object/driver"
 version = "1"
 kind    = "skill"
 idl     = "lifecycle/srv/Driver.srv"

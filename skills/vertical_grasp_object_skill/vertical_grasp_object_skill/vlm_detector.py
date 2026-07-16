@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MulanPSL-2.0
-"""VLM object detector for the grasp_cube skill (open-vocabulary, report-only).
+"""VLM object detector for the vertical_grasp_object skill (open-vocabulary, report-only).
 
 Where ``CubeDetector`` runs a fixed YOLO-OBB model (only the cube classes it was
 trained on), this resolves an arbitrary natural-language instruction ("抓红色的
@@ -32,7 +32,7 @@ import numpy as np
 from block_grasp.config import BLOCK_SIZE
 from block_grasp.coordinate_utils import estimate_grasp_angle_deg
 
-from grasp_cube_skill.detector import HeadCameraProjector
+from vertical_grasp_object_skill.detector import HeadCameraProjector
 
 
 # Prompt asking the VLM to locate the instructed target and return a normalised

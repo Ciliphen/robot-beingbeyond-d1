@@ -1,7 +1,7 @@
 manifestVersion: 1
 
 package:
-  name: com.beingbeyond.skill.grasp_cube
+  name: com.beingbeyond.skill.vertical_grasp_object
   version: 0.1.0
   vendor: beingbeyond
   description: Detect objects on the table (YOLO cubes, or open-vocabulary via a VLM), then grasp and place them (with optional grasp angle and gripper aperture) — MCP tools for the D1 dexterous hand.
@@ -17,11 +17,11 @@ start: bash scripts/start.sh
 # capability). The codegen step picks these up from ./capabilities and, with
 # --mcp, emits the typed Request/Response classes used in main.py.
 capabilities:
-  - name: robonix/skill/grasp_cube/driver
-  - name: robonix/skill/grasp_cube/pick_cube
-  - name: robonix/skill/grasp_cube/place_cube
-  - name: robonix/skill/grasp_cube/detect_cubes
-  - name: robonix/skill/grasp_cube/detect_objects
+  - name: robonix/skill/vertical_grasp_object/driver
+  - name: robonix/skill/vertical_grasp_object/pick_cube
+  - name: robonix/skill/vertical_grasp_object/place_cube
+  - name: robonix/skill/vertical_grasp_object/detect_cubes
+  - name: robonix/skill/vertical_grasp_object/detect_objects
 
 # Upstream hardware the skill consumes at runtime (discovered via atlas). The
 # arm + hand primitives own the hardware; the skill drives them over gRPC and

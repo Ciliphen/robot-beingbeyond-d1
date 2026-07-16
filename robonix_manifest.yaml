@@ -30,7 +30,7 @@ system:
   liaison:  { listen: 127.0.0.1:50081, log: info }
 
 # ── Hardware primitives ──────────────────────────────────────────────
-# The grasp_cube skill consumes d1_arm + d1_hand + d1_camera over gRPC, all
+# The vertical_grasp_object skill consumes d1_arm + d1_hand + d1_camera over gRPC, all
 # shipped in this repo under ./primitives/ (they own the serial link / CAN bus /
 # RealSense; arm+hand depend only on the beingbeyond_d1_sdk wheel + robonix_api,
 # d1_camera also uses vision.RealSenseCamera from BEINGBEYOND_PATH). The camera
@@ -60,18 +60,18 @@ primitive:
 service: []
 
 # ── Skills ───────────────────────────────────────────────────────────
-# grasp_cube: four MCP tools (detect_cubes / detect_objects / pick_cube /
+# vertical_grasp_object: four MCP tools (detect_cubes / detect_objects / pick_cube /
 # place_cube). pilot dispatches to it through executor when the user asks to
 # find / pick up / put down an object (pick_cube / place_cube also take an
 # optional grasp angle and gripper aperture). detect_cubes (YOLO, fixed cube
 # classes) needs the weights + hand-eye calibration under
-# ./skills/grasp_cube_skill/models/ (see that dir's README; git-ignored).
+# ./skills/vertical_grasp_object_skill/models/ (see that dir's README; git-ignored).
 # detect_objects (open-vocabulary via a VLM) shares that calibration and needs a
 # VLM endpoint — configured below or via env VLM_BASE_URL/VLM_API_KEY/VLM_MODEL;
 # left empty it is simply disabled while the other tools keep working.
 skill:
-  - name: grasp_cube
-    path: ./skills/grasp_cube_skill
+  - name: vertical_grasp_object
+    path: ./skills/vertical_grasp_object_skill
     config:
       pick_z: 0.095
       urdf_path: ""

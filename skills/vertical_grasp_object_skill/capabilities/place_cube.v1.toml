@@ -2,10 +2,10 @@
 # via pilot when the user says something like "把物体放到那边" / "place the object
 # at 中间" — the handler docstring in main.py is what the LLM reads.
 [contract]
-id      = "robonix/skill/grasp_cube/place_cube"
+id      = "robonix/skill/vertical_grasp_object/place_cube"
 version = "1"
 kind    = "skill"
-idl     = "grasp_cube/srv/PlaceCube.srv"
+idl     = "vertical_grasp_object/srv/PlaceCube.srv"
 
 [mode]
 type = "rpc"

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MulanPSL-2.0
-"""grasp_cube — detect cubes, pick one at a location, place it at another.
+"""vertical_grasp_object — detect cubes, pick one at a location, place it at another.
 
 Four LLM-callable MCP tools for the D1 dexterous hand:
 
@@ -33,18 +33,18 @@ import threading
 
 from robonix_api import Skill, Ok, Err, Deferred
 
-grasp_cube = Skill(id="grasp_cube", namespace="robonix/skill/grasp_cube")
+vertical_grasp_object = Skill(id="vertical_grasp_object", namespace="robonix/skill/vertical_grasp_object")
 
 # Codegen output (rbnx codegen --mcp): typed dataclasses derived from
-# capabilities/lib/grasp_cube/srv/{PickCube,PlaceCube,DetectCubes}.srv.
-from grasp_cube_mcp import (  # noqa: E402
+# capabilities/lib/vertical_grasp_object/srv/{PickCube,PlaceCube,DetectCubes}.srv.
+from vertical_grasp_object_mcp import (  # noqa: E402
     PickCube_Request, PickCube_Response,
     PlaceCube_Request, PlaceCube_Response,
     DetectCubes_Request, DetectCubes_Response,
     DetectObjects_Request, DetectObjects_Response,
 )
 
-# Package root (the grasp_cube_skill dir holding models/, capabilities/, ...),
+# Package root (the vertical_grasp_object_skill dir holding models/, capabilities/, ...),
 # used to resolve the default model / calibration paths.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -55,8 +55,8 @@ def _resolve_asset(path: str, default_rel: str) -> str:
     p = (path or "").strip() or default_rel
     return p if os.path.isabs(p) else os.path.join(_PKG_ROOT, p)
 
-log = logging.getLogger("grasp_cube")
-logging.basicConfig(level=logging.INFO, format="[grasp_cube] %(levelname)s %(message)s")
+log = logging.getLogger("vertical_grasp_object")
+logging.basicConfig(level=logging.INFO, format="[vertical_grasp_object] %(levelname)s %(message)s")
 
 
 # ── module state populated by lifecycle handlers ─────────────────────
@@ -125,8 +125,8 @@ def _controller_or_none():
     return _state["controller"]
 
 
-# ── @grasp_cube.mcp: the LLM-callable tools ──────────────────────────
-@grasp_cube.mcp("robonix/skill/grasp_cube/pick_cube")
+# ── @vertical_grasp_object.mcp: the LLM-callable tools ──────────────────────────
+@vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/pick_cube")
 def pick_cube(req: PickCube_Request) -> PickCube_Response:
     """抓取物体：把机械臂移动到指定位置，抓起那里的物体并夹住。The LLM should call
     this when the user wants an object picked up from a place. `position` is a
@@ -156,7 +156,7 @@ def pick_cube(req: PickCube_Request) -> PickCube_Response:
         return PickCube_Response(ok=False, message=f"error: {exc}")
 
 
-@grasp_cube.mcp("robonix/skill/grasp_cube/place_cube")
+@vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/place_cube")
 def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
     """放置物体：把机械臂移动到指定位置，松开夹住的物体放下。The LLM should call
     this after pick_cube to put the held object down. `position` is a coordinate
@@ -188,7 +188,7 @@ def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
         return PlaceCube_Response(ok=False, message=f"error: {exc}")
 
 
-@grasp_cube.mcp("robonix/skill/grasp_cube/detect_cubes")
+@vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/detect_cubes")
 def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
     """用头部相机拍一张图，跑 YOLO 识别桌面上的积木，返回每个积木的位置。The LLM
     should call this to see what cubes are on the table and where they are, then
@@ -215,7 +215,7 @@ def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
     return DetectCubes_Response(ok=True, message=msg, cubes=json.dumps(cubes, ensure_ascii=False))
 
 
-@grasp_cube.mcp("robonix/skill/grasp_cube/detect_objects")
+@vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/detect_objects")
 def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
     """用头部相机拍一张图，让视觉大模型（VLM）按自然语言描述找出要抓的物体，返回其位置。
     Unlike detect_cubes (fixed YOLO cube classes), this is open-vocabulary: the
@@ -249,7 +249,7 @@ def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────
-@grasp_cube.on_init
+@vertical_grasp_object.on_init
 def init(cfg: dict):
     """REGISTERED → INACTIVE. Light: parse config only. Don't open the arm/hand
     yet — the user may have spawned us just to inspect the cap tree."""
@@ -266,7 +266,7 @@ def init(cfg: dict):
         "models/best.pt",
     )
     _state["calib_path"] = _resolve_asset(
-        str(cfg.get("calib_path", "") or os.environ.get("GRASP_CUBE_CALIB", "")),
+        str(cfg.get("calib_path", "") or os.environ.get("VERTICAL_GRASP_OBJECT_CALIB", "")),
         "models/handeye_calib.npz",
     )
     # VLM endpoint for detect_objects: config → env (the deployment's VLM_*).
@@ -286,19 +286,19 @@ def init(cfg: dict):
     return Ok()
 
 
-@grasp_cube.on_activate
+@vertical_grasp_object.on_activate
 def activate():
     """INACTIVE → ACTIVE. Heavy: discover + connect the d1_arm / d1_hand
     primitives over gRPC and build the controller (which homes the arm).
     Returns Deferred(...) when a primitive isn't online yet — rbnx boot / the
     executor surface that and retry."""
-    from grasp_cube_skill.controller import GraspCubeController
-    from grasp_cube_skill.detector import CubeDetector
-    from grasp_cube_skill.primitive_clients import connect_primitives
+    from vertical_grasp_object_skill.controller import GraspCubeController
+    from vertical_grasp_object_skill.detector import CubeDetector
+    from vertical_grasp_object_skill.primitive_clients import connect_primitives
 
     try:
         log.info("connecting arm/hand/camera primitives via atlas ...")
-        arm, hand, camera = connect_primitives(grasp_cube)
+        arm, hand, camera = connect_primitives(vertical_grasp_object)
     except RuntimeError as exc:
         # Most likely the primitives are not up yet — let the framework retry.
         return Deferred(str(exc))
@@ -317,7 +317,7 @@ def activate():
     # failure here must not block pick/place/detect_cubes.
     if _state["vlm_base_url"] and _state["vlm_model"]:
         try:
-            from grasp_cube_skill.vlm_detector import VLMDetector
+            from vertical_grasp_object_skill.vlm_detector import VLMDetector
             log.info("initialising VLM detector (model=%s) ...", _state["vlm_model"])
             _state["vlm_detector"] = VLMDetector(
                 arm=arm, camera=camera, calib_path=_state["calib_path"],
@@ -335,7 +335,7 @@ def activate():
     return Ok()
 
 
-@grasp_cube.on_deactivate
+@vertical_grasp_object.on_deactivate
 def deactivate():
     """ACTIVE → INACTIVE. Release the held cube and drop the controller; the
     primitive channels are auto-closed by the Capability framework. Idempotent."""
@@ -352,7 +352,7 @@ def deactivate():
     return Ok()
 
 
-@grasp_cube.on_shutdown
+@vertical_grasp_object.on_shutdown
 def shutdown():
     """any → TERMINATED. Last-chance cleanup."""
     ctrl = _state["controller"]
@@ -367,7 +367,7 @@ def shutdown():
 
 
 def main() -> int:
-    grasp_cube.run()
+    vertical_grasp_object.run()
     return 0
 
 

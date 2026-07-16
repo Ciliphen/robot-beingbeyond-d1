@@ -8,7 +8,7 @@
 config:
   # int, pixels, default: 1280 (env: D1_CAMERA_WIDTH).
   # RGB stream width. Keep at the hand-eye calibration resolution (1280x720)
-  # so the grasp_cube detector's pixel->world homography stays valid.
+  # so the vertical_grasp_object detector's pixel->world homography stays valid.
   width: 1280
 
   # int, pixels, default: 720 (env: D1_CAMERA_HEIGHT).

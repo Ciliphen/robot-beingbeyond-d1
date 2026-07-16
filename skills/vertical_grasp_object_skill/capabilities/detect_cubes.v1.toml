@@ -3,10 +3,10 @@
 # — the handler runs YOLO on a head-camera frame and reports each cube's
 # base-frame position, which the LLM can then feed to pick_cube.
 [contract]
-id      = "robonix/skill/grasp_cube/detect_cubes"
+id      = "robonix/skill/vertical_grasp_object/detect_cubes"
 version = "1"
 kind    = "skill"
-idl     = "grasp_cube/srv/DetectCubes.srv"
+idl     = "vertical_grasp_object/srv/DetectCubes.srv"
 
 [mode]
 type = "rpc"

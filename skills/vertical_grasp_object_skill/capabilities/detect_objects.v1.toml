@@ -5,10 +5,10 @@
 # its base-frame position, which the LLM can then feed to pick_cube. Open
 # vocabulary, complementary to detect_cubes (fixed YOLO cube classes).
 [contract]
-id      = "robonix/skill/grasp_cube/detect_objects"
+id      = "robonix/skill/vertical_grasp_object/detect_objects"
 version = "1"
 kind    = "skill"
-idl     = "grasp_cube/srv/DetectObjects.srv"
+idl     = "vertical_grasp_object/srv/DetectObjects.srv"
 
 [mode]
 type = "rpc"

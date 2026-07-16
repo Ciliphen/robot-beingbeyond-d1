@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MulanPSL-2.0
-"""YOLO-OBB cube detector for the grasp_cube skill (perception, report-only).
+"""YOLO-OBB cube detector for the vertical_grasp_object skill (perception, report-only).
 
 Aims the head camera at the table (the hand-eye calibration pose), grabs one RGB
 frame, runs YOLO-OBB, and resolves each detected cube to a base-frame (x, y, z)

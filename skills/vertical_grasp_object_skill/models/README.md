@@ -1,4 +1,4 @@
-# grasp_cube models
+# vertical_grasp_object models
 
 The `detect_cubes` capability needs two local files that are **not** committed
 (they are large / deployment-specific — see the repo `.gitignore`):
@@ -11,7 +11,7 @@ The `detect_cubes` capability needs two local files that are **not** committed
 Place both files directly in this directory. The skill config in
 `robonix_manifest.yaml` points at them via `model_path` / `calib_path`
 (defaults: `./models/best.pt`, `./models/handeye_calib.npz`, resolved relative
-to the skill package). Override with `BLOCK_GRASP_MODEL` / `GRASP_CUBE_CALIB`
+to the skill package). Override with `BLOCK_GRASP_MODEL` / `VERTICAL_GRASP_OBJECT_CALIB`
 env vars if you keep them elsewhere.
 
 The calibration is specific to this robot's camera mount and table; re-run the

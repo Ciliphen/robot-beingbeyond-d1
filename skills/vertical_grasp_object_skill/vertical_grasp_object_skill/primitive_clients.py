@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MulanPSL-2.0
-"""Primitive-backed hardware adapters for the grasp_cube skill.
+"""Primitive-backed hardware adapters for the vertical_grasp_object skill.
 
 The pick/place controller (``controller.py``) is written against two SDK-shaped
 handles — an arm ``robot`` and a dexterous ``hand``. Instead of opening the

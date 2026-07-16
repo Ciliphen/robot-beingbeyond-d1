@@ -2,10 +2,10 @@
 # pilot when the user says something like "把物体从这里抓起来" / "pick up the
 # object at 0.2,0.1" — the handler docstring in main.py is what the LLM reads.
 [contract]
-id      = "robonix/skill/grasp_cube/pick_cube"
+id      = "robonix/skill/vertical_grasp_object/pick_cube"
 version = "1"
 kind    = "skill"
-idl     = "grasp_cube/srv/PickCube.srv"
+idl     = "vertical_grasp_object/srv/PickCube.srv"
 
 [mode]
 type = "rpc"
