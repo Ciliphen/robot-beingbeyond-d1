@@ -165,6 +165,20 @@ class HeadCameraProjector:
         return wx, wy, float(z_grasp)
 
 
+def _fold_square_angle_deg(angle_deg: float) -> float:
+    """Fold a grasp yaw into ``[-45°, 45°]`` using a cube's 90° symmetry.
+
+    A cube's top face is a square, so grasps at θ and θ±90° are identical (the
+    two-finger hand just swaps to the other pair of equal-width faces). Combined
+    with the gripper's own 180° symmetry the period is 90°, so the smallest
+    equivalent yaw always lies in ``[-45°, 45°]`` — folding here keeps the wrist
+    from rolling a large angle (e.g. 60° → -30°) when a small equivalent grasps
+    the cube identically. ONLY valid for square/cube targets, hence applied in
+    the YOLO cube path and NOT in the open-vocabulary VLM path (elongated objects
+    have no such symmetry)."""
+    return ((float(angle_deg) + 45.0) % 90.0) - 45.0
+
+
 class CubeDetector(HeadCameraProjector):
     """Head-camera + YOLO cube detector. Resolves detections to base-frame XY."""
 
@@ -210,7 +224,12 @@ class CubeDetector(HeadCameraProjector):
             u_bot, v_bot = obb_bottom_center(u, v, w, h, np.rad2deg(r), ratio=OBB_GRASP_RATIO)
             wx, wy, z_grasp = self._project(cap, u_bot, v_bot, BLOCK_SIZE / 2.0)
 
-            grasp_angle = estimate_grasp_angle_deg(u, v, w, h, np.rad2deg(r))
+            # Cube = square top face, so fold the yaw into [-45,45] via its 90°
+            # symmetry — the wrist then never rolls more than 45° for an
+            # identical grasp (see _fold_square_angle_deg).
+            grasp_angle = _fold_square_angle_deg(
+                estimate_grasp_angle_deg(u, v, w, h, np.rad2deg(r))
+            )
             cubes.append({
                 "class_name": cls_name,
                 "score": round(float(score), 3),

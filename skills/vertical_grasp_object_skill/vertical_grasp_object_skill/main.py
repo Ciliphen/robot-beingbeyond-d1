@@ -3,11 +3,12 @@
 
 Five LLM-callable MCP tools for the D1 dexterous hand:
 
+  * detect_cubes(class_filter)  — YOLO on a head-camera frame; fixed cube
+                                  classes. PREFERRED for cubes/blocks (feed
+                                  x,y,z + angle to pick_cube).
   * detect_objects(instruction) — VLM on a head-camera frame; open-vocabulary,
-                                  locate an object by description. PREFERRED
-                                  detector (feed x,y,z + angle to pick_cube).
-  * detect_cubes(class_filter)  — YOLO fallback; fixed cube classes, use only
-                                  when detect_objects fails / is unavailable.
+                                  locate a NON-cube object by description. Use
+                                  for anything YOLO can't (or if YOLO fails).
   * pick_cube(position)         — move to the location, grasp an object, lift and hold.
   * place_cube(position)        — move to the location, release the held object, lift.
   * verify_grasp(...)           — VLM re-check after a pick/place: did it work?
@@ -217,20 +218,32 @@ def place_cube(req: PlaceCube_Request) -> PlaceCube_Response:
 
 @vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/detect_cubes")
 def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
-    """（兜底工具）用头部相机拍一张图，跑 YOLO 识别桌面上的积木，返回每个积木的位置。
-    FALLBACK ONLY: prefer detect_objects for everything, including cubes. Use
-    this only when detect_objects failed or is unavailable (no VLM configured) —
-    it is limited to the fixed YOLO cube classes. Optional `class_filter`
-    (e.g. "red_cube") returns only that colour. `cubes` is a JSON array of
-    {class_name, score, x, y, z, grasp_angle_deg} in the base frame (metres),
-    sorted by score; x,y,z is the grasp point (z = cube centre, ~2.5 cm above
-    the table). Feed x,y,z + grasp_angle_deg to pick_cube. ok=true even if no
-    cube is found."""
+    """（方块/积木的首选检测工具）用头部相机拍一张图，跑 YOLO 识别桌面上的积木，返回每个积木的位置。
+    PREFERRED for CUBES / BLOCKS: whenever the target is a cube or block, call
+    this FIRST — YOLO is faster and more reliable for cubes than the VLM. Only
+    use detect_objects for cubes if this fails or YOLO is unavailable. (For any
+    NON-cube object — described by colour/shape/text/spatial hint — use
+    detect_objects instead; this tool is limited to the fixed YOLO cube classes.)
+    Optional `class_filter` (e.g. "red_cube") returns only that colour. `cubes`
+    is a JSON array of {class_name, score, x, y, z, grasp_angle_deg} in the base
+    frame (metres), sorted by score; x,y,z is the grasp point (z = cube centre,
+    ~2.5 cm above the table). Feed x,y,z + grasp_angle_deg to pick_cube. ok=true
+    even if no cube is found. NOTE: z here is a FIXED table-level value (YOLO has
+    no depth), so it is only valid for planar (x, y) tasks — do NOT use it to
+    judge stacking height / whether a cube landed on top of another. For a
+    stacking success check use the VLM path; YOLO can only confirm presence at an
+    x, y."""
     det = _state["detector"]
     if det is None:
         return DetectCubes_Response(ok=False, message="skill not activated (no camera connection)", cubes="[]")
     try:
         with _state["lock"]:
+            # Detect from the home posture: the workspace clamp is centred on the
+            # current EE (x, y), and the arm must not occlude the camera, so park
+            # at HOME_POSITION first for a consistent, unobstructed capture.
+            ctrl = _controller_or_none()
+            if ctrl is not None:
+                ctrl.move_home()
             cubes = det.detect()
     except Exception as exc:  # noqa: BLE001
         log.exception("detect_cubes failed")
@@ -246,13 +259,14 @@ def detect_cubes(req: DetectCubes_Request) -> DetectCubes_Response:
 
 @vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/detect_objects")
 def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
-    """（首选检测工具）用头部相机拍一张图，让视觉大模型（VLM）按自然语言描述找出物体，返回其位置。
-    PREFERRED detector — call this FIRST for any perception need: "桌上有什么"、
-    "你看到了什么"、或按描述找物体（颜色/形状/文字/空间或相对位置，如 "红色的杯子"、
-    "离机械臂最近的螺丝刀"、"最右边的那个"）。It is open-vocabulary and also handles
-    cubes, so use it for cube queries too; only fall back to detect_cubes if this
-    call fails or the VLM is not configured. To list everything on the table,
-    pass a broad instruction like "桌面上所有的物体". Pass the description as
+    """（非方块物体的首选检测工具）用头部相机拍一张图，让视觉大模型（VLM）按自然语言描述找出物体，返回其位置。
+    Use this for any NON-cube perception need: "桌上有什么"、"你看到了什么"、或
+    按描述找物体（颜色/形状/文字/空间或相对位置，如 "红色的杯子"、"离机械臂最近的
+    螺丝刀"、"最右边的那个"）。It is open-vocabulary, so it handles arbitrary objects
+    the YOLO detector was not trained on. For CUBES / BLOCKS, prefer detect_cubes
+    (YOLO — faster and more reliable for cubes); only use this for a cube if
+    detect_cubes fails. To list everything on the table, pass a broad instruction
+    like "桌面上所有的物体". Pass the description as
     `instruction`. `objects` is a JSON array of
     {class_name, score, x, y, z, grasp_angle_deg} in the base frame (metres),
     which you feed to pick_cube (x,y,z + grasp_angle_deg → angle_deg; passing the
@@ -268,6 +282,11 @@ def detect_objects(req: DetectObjects_Request) -> DetectObjects_Response:
             objects="[]")
     try:
         with _state["lock"]:
+            # Detect from the home posture (see detect_cubes): consistent
+            # workspace-clamp centre + unobstructed camera view.
+            ctrl = _controller_or_none()
+            if ctrl is not None:
+                ctrl.move_home()
             objs = det.detect(req.instruction)
     except ValueError as exc:
         return DetectObjects_Response(ok=False, message=f"bad argument: {exc}", objects="[]")
@@ -293,7 +312,17 @@ def verify_grasp(req: VerifyGrasp_Request) -> VerifyGrasp_Response:
         (available if you ever need to confirm a spot was cleared).
     On success=false, re-run detect_objects for the object's current position and
     redo the pick→place. Returns ok=true if the check ran (VLM reachable), with
-    the pass/fail verdict in `success`."""
+    the pass/fail verdict in `success`.
+
+    STACKING CHECK — IMPORTANT: this VLM check (and any detect_cubes fallback)
+    only ever compares the PLANAR (x, y) position; neither reports a measured
+    height. If the VLM is unavailable and you fall back to detect_cubes (YOLO)
+    to re-detect, the returned z is a FIXED table-level value (not real depth),
+    so you must NOT use z / height to decide whether a stack succeeded. YOLO can
+    only confirm a planar task (there is / isn't a cube at that x, y) — it cannot
+    verify that one cube actually landed on top of another. To confirm stacking
+    height you need the VLM path (or an external check); with YOLO alone, treat
+    only the x, y match as verified."""
     det = _state["vlm_detector"]
     if det is None:
         return VerifyGrasp_Response(

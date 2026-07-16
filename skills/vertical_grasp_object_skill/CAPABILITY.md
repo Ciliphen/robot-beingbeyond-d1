@@ -1,15 +1,16 @@
 ---
-description: Detect an object on the table (open-vocabulary via a VLM, or YOLO cubes), pick it up / place it down with the D1 dexterous hand, and verify success — optional grasp angle and gripper aperture.
+description: Detect an object on the table (YOLO for cubes/blocks, open-vocabulary VLM for other objects), pick it up / place it down with the D1 dexterous hand, and verify success — optional grasp angle and gripper aperture.
 ---
 
 # 垂直抓取物体 (vertical_grasp_object) — detect / pick / place objects on the table
 
 Perceives objects on the table with the head camera and manipulates them with
-the D1 6-DoF arm + dexterous hand. A VLM detector (open-vocabulary, preferred)
-and a YOLO cube detector (fallback) report base-frame grasp points — with a
-grasp yaw from the object's orientation — that feed the pick/place motion; a VLM
-`verify_grasp` check closes the loop so a missed grasp can be retried.
-User-invocable via the LLM/pilot.
+the D1 6-DoF arm + dexterous hand. A YOLO cube detector (preferred for
+cubes/blocks — faster and more reliable) and a VLM detector (open-vocabulary,
+for any other object) report base-frame grasp points — with a grasp yaw from the
+object's orientation — that feed the pick/place motion; a VLM `verify_grasp`
+check closes the loop so a missed grasp can be retried. User-invocable via the
+LLM/pilot.
 
 The skill is a pure robonix **consumer**: it discovers the `d1_arm` / `d1_hand`
 / `d1_camera` primitives via atlas and drives them over gRPC. It never opens the
@@ -23,13 +24,15 @@ All under the `robonix/skill/vertical_grasp_object/*` namespace. Coordinates are
 metres; a location string is `"x,y"` (Z = configured `pick_z`), `"x,y,z"`, or a
 named spot (e.g. `"中间"`). ASCII and full-width commas both parse.
 
-### `robonix/skill/vertical_grasp_object/detect_objects` — **preferred detector**
+### `robonix/skill/vertical_grasp_object/detect_objects` — **preferred for non-cube objects**
 
 Detect an arbitrary object by natural-language description with a
 vision-language model (open vocabulary — **not** limited to the YOLO cube
-classes). **Call this first** for any perception need — "what's on the table",
-"what do you see", or finding an object by description (including cubes). Only
-fall back to `detect_cubes` if this fails or the VLM is not configured.
+classes). Use this for any **non-cube** object, and for open-ended perception —
+"what's on the table", "what do you see", or finding an object by description
+(colour / shape / text / spatial hint). For **cubes / blocks**, prefer
+`detect_cubes` (YOLO, faster and more reliable); only use this for a cube if
+`detect_cubes` fails or YOLO is unavailable.
 
 | param         | type   | default | meaning                                                              |
 |---------------|--------|---------|----------------------------------------------------------------------|
@@ -47,10 +50,12 @@ so `grasp_angle_deg` is meaningful for tilted / elongated objects — pass it to
 fixed grasp height above the calibrated table plane (`vlm_grasp_height`). Best
 for objects resting on the table; objects at other heights will be off in Z.
 
-### `robonix/skill/vertical_grasp_object/detect_cubes` — **YOLO fallback**
+### `robonix/skill/vertical_grasp_object/detect_cubes` — **preferred for cubes/blocks**
 
-Detect cubes on the table with YOLO-OBB (fixed, trained cube classes). Fallback
-only — use when `detect_objects` failed or the VLM is unavailable.
+Detect cubes on the table with YOLO-OBB (fixed, trained cube classes). **Call
+this first whenever the target is a cube or block** — YOLO is faster and more
+reliable for cubes than the VLM. Only fall back to `detect_objects` for a cube
+if this fails or YOLO is unavailable.
 
 | param          | type   | default | meaning                                          |
 |----------------|--------|---------|--------------------------------------------------|
@@ -59,7 +64,9 @@ only — use when `detect_objects` failed or the VLM is unavailable.
 Returns `{ok, message, cubes}`. `cubes` is a JSON array of
 `{class_name, score, x, y, z, grasp_angle_deg}` in the base frame, sorted by
 score; `x, y, z` is the grasp point (z = cube centre, ~2.5 cm above the table).
-`ok=true` even if no cube is found.
+`ok=true` even if no cube is found. **`z` is a fixed table-level value** (YOLO
+has no depth) — valid for planar (x, y) tasks only; do **not** use it to judge
+stacking height or whether a cube landed on another (see `verify_grasp`).
 
 ### `robonix/skill/vertical_grasp_object/pick_cube`
 
@@ -110,11 +117,20 @@ Returns `{ok, success, message}`. `ok=true` if the check ran (VLM reachable);
 current position and redo the pick→place. A detection within
 `verify_match_radius` (config, default 5 cm) of `position` counts as "at" it.
 
+**Stacking verification is planar only.** This check compares the **(x, y)**
+position — no measured height. If the VLM is unavailable and you fall back to
+`detect_cubes` (YOLO) to re-detect, the returned `z` is a **fixed table-level
+value**, not real depth, so it **cannot** confirm that one cube landed on top of
+another. YOLO is limited to planar tasks (is / isn't a cube at that x, y);
+verifying stacking height needs the VLM path (or an external check). With YOLO
+alone, treat only the x, y match as verified.
+
 ## Usage pattern (recommended closed loop)
 
-1. **Detect** — call `detect_objects` with the target description to get its
-   `x, y, z` and `grasp_angle_deg`. (Fall back to `detect_cubes` only if the VLM
-   is unavailable.)
+1. **Detect** — for a **cube/block**, call `detect_cubes` (YOLO); for any
+   **other object**, call `detect_objects` (VLM) with the target description. Get
+   its `x, y, z` and `grasp_angle_deg`. (Fall back to the other detector only if
+   the preferred one fails or is unavailable.)
 2. **Pick** — call `pick_cube` with that `position`, passing `grasp_angle_deg`
    as `angle_deg` (essential for tilted/elongated objects). Blocks until done.
    Do **not** verify here.

@@ -33,7 +33,6 @@ from beingbeyond_d1_sdk.urdf_path import get_default_urdf_path
 from block_grasp.ik_scipy import scipy_ik, scipy_ik_multi_restart
 from block_grasp.config import (
     APPROACH_HEIGHT_OFFSET,
-    ASIDE_POSITION,
     CATCH_DELAY_S,
     EE_PITCH_DEG,
     EE_ROLL_DEG,
@@ -53,8 +52,12 @@ from block_grasp.config import (
     IK_Z_WEIGHT,
     INTERP_STEP_SIZE,
     JOINT_JUMP_THR_DEG,
-    Z_SAFE,
 )
+
+# Skill-local park / home pose (base frame, metres). move_home parks the arm
+# here; _startup uses its (x, y) as the resting posture position. Kept local to
+# this skill rather than reusing block_grasp's shared ASIDE_POSITION.
+HOME_POSITION = (0.12, -0.23, 0.32)
 
 
 class GraspCubeController:
@@ -101,12 +104,17 @@ class GraspCubeController:
         self._robot.wait_until_reached(q_init, active_joint_indices=range(8))
         time.sleep(0.3)
 
-        print("[Init] Lifting to safe height ...", flush=True)
+        print("[Init] Lifting to home posture ...", flush=True)
         q_full = np.asarray(self._robot.get_positions(), dtype=float)
         q_head, q_arm = self._kin.split_q(q_full)
         T_cur = self._kin.ee_in_base(q_head, q_arm)
+        # Rest at the full HOME_POSITION so the initial gripper posture is
+        # identical to move_home (same x, y, z; the RPY rotation below then
+        # matches move_home's R_target orientation).
         p_lift = T_cur[:3, 3].copy()
-        p_lift[2] = Z_SAFE + 0.05
+        p_lift[0] = HOME_POSITION[0]
+        p_lift[1] = HOME_POSITION[1]
+        p_lift[2] = HOME_POSITION[2]
         T_lift = np.eye(4)
         T_lift[:3, :3] = T_cur[:3, :3]
         T_lift[:3, 3] = p_lift
@@ -442,7 +450,7 @@ class GraspCubeController:
         self._hand.set_joint_pos(HAND_OPEN)
         self._holding = False
         time.sleep(CATCH_DELAY_S)
-        ax, ay, az = ASIDE_POSITION
+        ax, ay, az = HOME_POSITION
         print(f"[Home] Parking at ({ax:.3f}, {ay:.3f}, {az:.3f})", flush=True)
         try:
             self._interpolate_and_move(self._make_target_pose(ax, ay, az))
