@@ -24,3 +24,4 @@ rbnx-boot/
 skills/vertical_grasp_object_skill/models/*.pt
 skills/vertical_grasp_object_skill/models/*.npz
 
+tools/yolo_train/train.log

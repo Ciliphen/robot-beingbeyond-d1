@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import sys
 import threading
 import time
 from typing import List, Optional
@@ -41,6 +42,8 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+# vision.py 是 tools/ 下各工具共用的相机封装，放在父目录。
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from vision import RealSenseCamera
 from detect import detect_objects_in_frame, draw_box, load_model
 

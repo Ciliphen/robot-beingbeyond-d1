@@ -11,7 +11,7 @@
 | 文件              | 作用                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------------ |
 | `capture.py`    | **（第 0 步）** 真机采集：相机预览 + 实时检测 + 头部控制 + 拍照存到 `dataset/raw/` |
-| `vision.py`     | `capture.py` 用的 RealSense 相机封装（依赖 `pyrealsense2`）                            |
+| `../vision.py`  | `capture.py` 用的 RealSense 相机封装（依赖 `pyrealsense2`）。放在 `tools/`，供各工具共用 |
 | `json2label.py` | LabelMe JSON 标注 → YOLO-OBB 标签，并按 8:2 划分 train/val                                |
 | `train.py`      | 用 ultralytics 训练 YOLO11-OBB                                                             |
 | `data.yaml`     | 数据集路径 + 类别定义（训练读它）                                                          |
