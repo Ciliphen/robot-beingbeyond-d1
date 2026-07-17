@@ -24,7 +24,7 @@ HEAD_YAW_DEG: float = -10.0
 HEAD_PITCH_DEG: float = 35.0
 
 # ── YOLO detection ────────────────────────────────────────────────────────
-CONF_THRESHOLD: float = 0.85       # confidence threshold for detections
+CONF_THRESHOLD: float = 0.7       # confidence threshold for detections
 IOU_THRESHOLD: float = 0.45        # IoU threshold for NMS
 
 # ── Block geometry ──────────────────────────────────────────────────────────

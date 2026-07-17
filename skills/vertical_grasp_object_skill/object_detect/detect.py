@@ -12,7 +12,7 @@ Typical usage:
     from object_detect import load_model, detect_objects_in_frame, draw_box
 
     model = load_model("runs/best.pt")
-    detections = detect_objects_in_frame(model, frame, conf_thres=0.85)
+    detections = detect_objects_in_frame(model, frame, conf_thres=0.7)
 
     for (u, v, w, h, r), score, cls_id, cls_name in detections:
         draw_box(frame, u, v, w, h, np.rad2deg(r), f"{cls_name}: {score:.2f}")

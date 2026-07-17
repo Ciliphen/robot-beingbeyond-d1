@@ -84,7 +84,7 @@ skill:
       # Constant correction (m) to the calibrated table plane Z (both detectors +
       # perspective correction). NEGATIVE if picks land a fixed amount too high
       # across the whole table (try -0.01, -0.02 ...); positive if too low.
-      table_z_offset: -0.055
+      table_z_offset: 0
       # VLM endpoint for detect_objects. Empty → falls back to env
       # VLM_BASE_URL / VLM_API_KEY / VLM_MODEL (the deployment's VLM). Model must
       # accept image input. vlm_grasp_height (m) is the assumed grasp Z above the

@@ -244,7 +244,7 @@ class CubeDetector(HeadCameraProjector):
             cv2.imwrite(raw_path, frame_bgr)
 
             annotated = frame_bgr.copy()
-            # Low threshold on purpose: reveal boxes below CONF_THRESHOLD (0.85).
+            # Low threshold on purpose: reveal boxes below CONF_THRESHOLD (0.7).
             cands = detect_objects_in_frame(
                 self._model, frame_bgr, conf_thres=0.10, iou_thres=IOU_THRESHOLD)
             for (u, v, w, h, r), score, _cid, cls_name in cands:
