@@ -1,5 +1,5 @@
 ---
-description: Detect an object on the table (YOLO for cubes/blocks, open-vocabulary VLM for other objects), pick it up / place it down with the D1 dexterous hand, and verify success — optional grasp angle and gripper aperture.
+description: Detect an object on the table (YOLO for cubes/blocks, open-vocabulary VLM for other objects), pick it up / place it down with the D1 dexterous hand, stack one cube on another, and verify success — optional grasp angle and gripper aperture.
 ---
 
 # 垂直抓取物体 (vertical_grasp_object) — detect / pick / place objects on the table
@@ -9,20 +9,26 @@ the D1 6-DoF arm + dexterous hand. A YOLO cube detector (preferred for
 cubes/blocks — faster and more reliable) and a VLM detector (open-vocabulary,
 for any other object) report base-frame grasp points — with a grasp yaw from the
 object's orientation — that feed the pick/place motion; a VLM `verify_grasp`
-check closes the loop so a missed grasp can be retried. User-invocable via the
-LLM/pilot.
+check closes the loop so a missed grasp can be retried. A one-call `stack_cubes`
+tool stacks one coloured cube on another (detect → pick → place). User-invocable
+via the LLM/pilot.
 
 The skill is a pure robonix **consumer**: it discovers the `d1_arm` / `d1_hand`
 / `d1_camera` primitives via atlas and drives them over gRPC. It never opens the
 serial link / CAN bus / RealSense itself. IK/FK, YOLO, and the hand-eye
-projection run locally (pure compute, reused from the Beingbeyond_D1
-`block_grasp` stack via `BEINGBEYOND_PATH`).
+projection run locally (pure compute; the `object_detect` + `block_grasp` stacks
+are vendored into this package, FK/IK from the `beingbeyond_d1_sdk` wheel — no
+external `BEINGBEYOND_PATH` needed).
 
-## Interface (5 MCP tools)
+## Interface (6 MCP tools)
 
 All under the `robonix/skill/vertical_grasp_object/*` namespace. Coordinates are base-frame
 metres; a location string is `"x,y"` (Z = configured `pick_z`), `"x,y,z"`, or a
 named spot (e.g. `"中间"`). ASCII and full-width commas both parse.
+
+For the common **"stack cube A on cube B"** request, prefer the one-call
+`stack_cubes` tool (below) over orchestrating `detect_cubes` + `pick_cube` +
+`place_cube` by hand.
 
 ### `robonix/skill/vertical_grasp_object/detect_objects` — **preferred for non-cube objects**
 
@@ -125,6 +131,33 @@ another. YOLO is limited to planar tasks (is / isn't a cube at that x, y);
 verifying stacking height needs the VLM path (or an external check). With YOLO
 alone, treat only the x, y match as verified.
 
+### `robonix/skill/vertical_grasp_object/stack_cubes` — **preferred for stacking cubes**
+
+Stack one coloured cube on top of another in a **single call**: detect both
+cubes (YOLO), pick the `top_color` cube, and release it centred one cube-height
+above the `base_color` cube, then park the arm. **Whenever the user wants to
+stack cubes, call this** instead of chaining `detect_cubes` + `pick_cube` +
+`place_cube` yourself.
+
+| param        | type   | default | meaning                                                                                 |
+|--------------|--------|---------|-----------------------------------------------------------------------------------------|
+| `top_color`  | string | —       | Colour of the cube to pick up and place ON TOP. Chinese/English/class name: `"红色"` / `"red"` / `"red_cube"`. |
+| `base_color` | string | —       | Colour of the BASE cube it is stacked onto (same forms). Must DIFFER from `top_color`.  |
+| `gripper`    | string | ""      | Optional close amount on the top cube: `0.0` (open) / `0.5` (standard) / `1.0` (tightest); empty = standard grasp. |
+
+Returns `{ok, message}`. `ok=true` **iff** the top cube was grasped **and**
+released on top of the base cube. On failure `message` names the step that failed
+(cube not detected / grasp failed / place failed) and lists which classes were
+detected, so the caller can retry. Trained cube colours: **red / green /
+yellow**. The XY comes from the base cube's detected centre and the release
+`z = base cube centre z + block_height` (config, 5 cm default); the top cube's
+grasp angle aligns the pick, the base cube's angle aligns the release.
+
+**No stacking-height verification.** Like `detect_cubes`, YOLO has no depth, so
+this does not confirm the cube stayed stacked — it is a planar-XY + geometric-Z
+placement. For a success check, call `verify_grasp` (VLM) afterwards. To build a
+taller tower, call `stack_cubes` repeatedly (each call re-detects the scene).
+
 ## Usage pattern (recommended closed loop)
 
 1. **Detect** — for a **cube/block**, call `detect_cubes` (YOLO); for any
@@ -203,9 +236,9 @@ tools are disabled and report "not configured"; the other three are unaffected.
 - YOLO weights + hand-eye calibration under `./models/` (`best.pt`,
   `handeye_calib.npz`; robot-specific, git-ignored — see `models/README.md`).
   The calibration is shared by both detectors.
-- Config keys (see `config.spec`): `pick_z`, `urdf_path`, `model_path`,
-  `calib_path`, `vlm_base_url`, `vlm_api_key`, `vlm_model`, `vlm_grasp_height`,
-  `verify_match_radius`.
+- Config keys (see `config.spec`): `pick_z`, `block_height`, `urdf_path`,
+  `model_path`, `calib_path`, `vlm_base_url`, `vlm_api_key`, `vlm_model`,
+  `vlm_grasp_height`, `verify_match_radius`.
 
 ## Lifecycle
 

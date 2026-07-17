@@ -4,15 +4,33 @@
 # robonix_manifest.yaml. An empty `config: {}` uses the defaults below.
 
 config:
-  # float (metres), default: 0.095.
+  # float (metres), default: 0
   # Default grasp height (base-frame Z) used when a pick/place location is given
   # as "x,y" without an explicit Z. pick_cube / place_cube take coordinates
   # directly; when a Z is omitted this fixed, hand-measured table height is used.
-  pick_z: 0.095
+  pick_z: 0
 
   # string, default: "" (SDK default URDF).
   # URDF used for the local IK/FK. Empty picks the beingbeyond_d1_sdk default.
   urdf_path: ""
+
+  # float (metres), default: 0.05.
+  # One cube height, used ONLY by stack_cubes: the top cube is released at
+  # base_cube_z + block_height, so its centre lands one cube above the base
+  # cube's centre. Set to your cube's side length (standard cube = 5 cm).
+  block_height: 0.05
+
+  # float (metres), default: 0.0.
+  # Constant correction added to the CALIBRATED table plane Z, everywhere. The
+  # hand-eye calibration fixes the table height in the base frame; if picks land
+  # a fixed amount too high (or low) across the WHOLE table, the plane was
+  # calibrated off — nudge it here. NEGATIVE = table is actually lower than
+  # calibrated (the common "grasps too high" case; try -0.01, -0.02 ...).
+  # Applies to BOTH detectors (detect_cubes + detect_objects) and the perspective
+  # correction, so one value fixes every detection. This is the right knob for a
+  # SYSTEMATIC height error; per-object grasp height (cube centre = BLOCK_SIZE/2)
+  # is geometry and stays fixed.
+  table_z_offset: 0.0
 
   # string, default: "" → ./models/best.pt (env: BLOCK_GRASP_MODEL).
   # YOLO-OBB weights for detect_cubes. Relative paths resolve against the skill

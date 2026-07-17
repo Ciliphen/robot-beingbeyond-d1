@@ -129,6 +129,7 @@ class VLMDetector(HeadCameraProjector):
     def __init__(self, *, arm, camera, calib_path: str,
                  base_url: str, api_key: str, model: str,
                  urdf_path: str = "", grasp_height: float = BLOCK_SIZE / 2.0,
+                 table_z_offset: float = 0.0,
                  timeout: float = 60.0) -> None:
         """Load the hand-eye calibration and record the VLM endpoint.
 
@@ -146,7 +147,8 @@ class VLMDetector(HeadCameraProjector):
                          centre (2.5 cm).
             timeout:     VLM HTTP timeout (seconds).
         """
-        super().__init__(arm=arm, camera=camera, calib_path=calib_path, urdf_path=urdf_path)
+        super().__init__(arm=arm, camera=camera, calib_path=calib_path,
+                         urdf_path=urdf_path, table_z_offset=table_z_offset)
         if not base_url:
             raise ValueError("VLM base_url is empty — set config vlm_base_url or env VLM_BASE_URL")
         if not model:

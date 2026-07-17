@@ -1,0 +1,12 @@
+# Stack one coloured cube on top of another in a single call (detect -> pick ->
+# place -> park). PREFERRED whenever the user wants to STACK cubes.
+# Request: the colour to pick up and place on top, and the colour of the base
+#          cube it should be stacked onto. Optional gripper tightness.
+# Response: whether the whole detect -> pick -> place sequence succeeded, plus a
+#           human-readable message (with the resolved coordinates / failure step).
+string top_color    # required: colour of the cube to pick up and place ON TOP (e.g. "红色" / "red" / "red_cube")
+string base_color   # required: colour of the cube to use as the BASE / bottom (same forms accepted)
+string gripper      # optional: how tightly to close on the top cube, 0.0 (open) / 0.5 (standard) / 1.0 (tightest); empty = standard grasp
+---
+bool ok             # true iff the top cube was grasped AND released on top of the base cube
+string message      # human-readable status: resolved cubes, stacking height, or which step failed

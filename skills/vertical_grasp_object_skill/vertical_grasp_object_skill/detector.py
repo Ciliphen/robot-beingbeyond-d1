@@ -7,10 +7,11 @@ via the calibration homography + perspective correction. Returns a plain list of
 dicts for the ``detect_cubes`` MCP tool. It drives no motion beyond aiming the
 head — picking/placing stays in ``controller.py``.
 
-The maths mirror ``block_grasp/grasp_controller.py::detect_blocks`` so detected
-positions line up with what the pick pipeline expects. The pure-compute
-perception stack (YOLO loader/inference, OBB geometry helpers, tunables) is
-reused from the Beingbeyond_D1 repo, imported via ``BEINGBEYOND_PATH``.
+The maths mirror the D1 grasp pipeline's ``detect_blocks`` so detected positions
+line up with what the pick pipeline expects. The pure-compute perception stack
+(YOLO loader/inference in ``object_detect``, OBB geometry helpers + tunables in
+``block_grasp``) is VENDORED into this package (see ``../object_detect/`` and
+``../block_grasp/``), so the skill needs no external ``BEINGBEYOND_PATH``.
 
 The camera-aim + homography + perspective-correction plumbing lives in the
 ``HeadCameraProjector`` base class so the VLM detector (``vlm_detector.py``) can
@@ -18,7 +19,9 @@ resolve its own pixel detections to base-frame XY through the same calibration.
 """
 from __future__ import annotations
 
+import os
 import time
+from datetime import datetime
 from typing import Dict, List, Tuple
 
 import cv2
@@ -27,7 +30,7 @@ import numpy as np
 from beingbeyond_d1_sdk.pin_kinematics import D1Kinematics, D1KinematicsConfig
 from beingbeyond_d1_sdk.urdf_path import get_default_urdf_path
 
-from object_detect.detect import detect_objects_in_frame, load_model
+from object_detect.detect import detect_objects_in_frame, draw_box, load_model
 from block_grasp.coordinate_utils import (
     estimate_grasp_angle_deg,
     obb_bottom_center,
@@ -69,7 +72,8 @@ class HeadCameraProjector:
     both resolve positions identically against the same calibration.
     """
 
-    def __init__(self, *, arm, camera, calib_path: str, urdf_path: str = "") -> None:
+    def __init__(self, *, arm, camera, calib_path: str, urdf_path: str = "",
+                 table_z_offset: float = 0.0) -> None:
         """Load the hand-eye calibration and set up the kinematics.
 
         Args:
@@ -77,9 +81,19 @@ class HeadCameraProjector:
             camera:     Camera primitive handle (``get_aligned_frames`` -> RGB).
             calib_path: Path to ``handeye_calib.npz`` (H, head pose, table points).
             urdf_path:  Robot URDF; empty for the SDK default.
+            table_z_offset: constant correction (m) added to the calibrated table
+                          plane Z everywhere. The hand-eye calibration fixes the
+                          table height in the base frame; if picks land a fixed
+                          amount too high/low across the WHOLE table, the plane was
+                          calibrated off — nudge it here (negative = table is
+                          actually lower than calibrated, the common case for
+                          "grasps too high"). Shared by BOTH detectors (YOLO +
+                          VLM) and feeds the perspective correction, so one value
+                          fixes every detection. Tunable via `table_z_offset`.
         """
         self._arm = arm
         self._camera = camera
+        self._table_z_offset = float(table_z_offset)
 
         if not urdf_path:
             urdf_path = get_default_urdf_path()
@@ -94,20 +108,21 @@ class HeadCameraProjector:
             self._z_table = float(np.median(self._W[:, 2]))
         else:
             self._W = None
-            self._z_table = 0.08
+            self._z_table = 0
 
     def _get_table_z(self, x: float, y: float) -> float:
         """Interpolate table Z at (x, y) — inverse-distance-weighted average of
-        the 3 nearest calibration points (handles a slightly tilted table)."""
+        the 3 nearest calibration points (handles a slightly tilted table), plus
+        the constant ``table_z_offset`` correction."""
         if self._W is None or len(self._W) < 3:
-            return self._z_table
+            return self._z_table + self._table_z_offset
         dists = np.sqrt((self._W[:, 0] - x) ** 2 + (self._W[:, 1] - y) ** 2)
         idx = np.argsort(dists)[:3]
         if dists[idx[0]] < 1e-6:
-            return float(self._W[idx[0], 2])
+            return float(self._W[idx[0], 2]) + self._table_z_offset
         wgt = 1.0 / (dists[idx] + 0.001)
         wgt /= wgt.sum()
-        return float(np.dot(wgt, self._W[idx, 2]))
+        return float(np.dot(wgt, self._W[idx, 2])) + self._table_z_offset
 
     def _capture(self) -> _Capture:
         """Aim the head at the table (the pose the homography was calibrated at),
@@ -183,7 +198,8 @@ class CubeDetector(HeadCameraProjector):
     """Head-camera + YOLO cube detector. Resolves detections to base-frame XY."""
 
     def __init__(self, *, arm, camera, model_path: str, calib_path: str,
-                 urdf_path: str = "") -> None:
+                 urdf_path: str = "", table_z_offset: float = 0.0,
+                 debug_dir: str = "") -> None:
         """Load the hand-eye calibration and the YOLO model.
 
         Args:
@@ -192,12 +208,55 @@ class CubeDetector(HeadCameraProjector):
             model_path: Path to the YOLO-OBB ``.pt`` checkpoint.
             calib_path: Path to ``handeye_calib.npz`` (H, head pose, table points).
             urdf_path:  Robot URDF; empty for the SDK default.
+            table_z_offset: constant table-plane Z correction (m); see
+                          ``HeadCameraProjector``. Use this to fix picks that land
+                          a fixed amount too high/low across the whole table.
+            debug_dir:  if set, every ``detect()`` writes the raw frame + an
+                          annotated frame (ALL candidate boxes at a low threshold,
+                          with class+score) here, so you can see what YOLO saw and
+                          why a cube was / wasn't reported. Empty = disabled.
         """
-        super().__init__(arm=arm, camera=camera, calib_path=calib_path, urdf_path=urdf_path)
+        super().__init__(arm=arm, camera=camera, calib_path=calib_path,
+                         urdf_path=urdf_path, table_z_offset=table_z_offset)
+        # Grasp point = cube centre (BLOCK_SIZE/2 above the table). This is a
+        # fixed geometric offset for a standard cube; systematic height error
+        # belongs in table_z_offset (the calibrated plane), not here.
+        self._grasp_height = BLOCK_SIZE / 2.0
+        self._debug_dir = (debug_dir or "").strip()
+        if self._debug_dir:
+            os.makedirs(self._debug_dir, exist_ok=True)
 
-        print(f"[detect] loading YOLO model {model_path} ...", flush=True)
+        print(f"[detect] loading YOLO model {model_path} "
+              f"(table_z_offset={self._table_z_offset:+.3f} m, "
+              f"debug_dir={self._debug_dir or '<off>'}) ...", flush=True)
         self._model = load_model(model_path)
         print("[detect] detector ready", flush=True)
+
+    def _save_debug(self, frame_bgr: np.ndarray) -> None:
+        """Write the raw frame + an annotated copy showing ALL candidate boxes at
+        a low threshold (0.10) with class+score, so sub-threshold detections that
+        CONF_THRESHOLD dropped are visible. Never raises — debug must not break a
+        detect()."""
+        try:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+            raw_path = os.path.join(self._debug_dir, f"{ts}_raw.jpg")
+            ann_path = os.path.join(self._debug_dir, f"{ts}_annotated.jpg")
+            cv2.imwrite(raw_path, frame_bgr)
+
+            annotated = frame_bgr.copy()
+            # Low threshold on purpose: reveal boxes below CONF_THRESHOLD (0.85).
+            cands = detect_objects_in_frame(
+                self._model, frame_bgr, conf_thres=0.10, iou_thres=IOU_THRESHOLD)
+            for (u, v, w, h, r), score, _cid, cls_name in cands:
+                # Green if it would pass CONF_THRESHOLD, red (dropped) otherwise.
+                color = (0, 255, 0) if score >= CONF_THRESHOLD else (0, 0, 255)
+                draw_box(annotated, u, v, w, h, np.rad2deg(r),
+                         f"{cls_name}:{score:.2f}", color=color)
+            cv2.imwrite(ann_path, annotated)
+            print(f"[detect] debug: {len(cands)} candidate(s) (thr=0.10) -> "
+                  f"{ann_path}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[detect] debug save failed (ignored): {exc}", flush=True)
 
     def detect(self) -> List[Dict[str, object]]:
         """Aim the head, grab a frame, run YOLO, and return the detected cubes.
@@ -214,6 +273,8 @@ class CubeDetector(HeadCameraProjector):
         detections = detect_objects_in_frame(
             self._model, frame_bgr, conf_thres=CONF_THRESHOLD, iou_thres=IOU_THRESHOLD
         )
+        if self._debug_dir:
+            self._save_debug(frame_bgr)
 
         cubes: List[Dict[str, object]] = []
         for (u, v, w, h, r), score, _cls_id, cls_name in detections:
@@ -222,7 +283,7 @@ class CubeDetector(HeadCameraProjector):
             # face — pick_cube descends straight to this z, so reporting the top
             # face would leave the hand grabbing above the cube.
             u_bot, v_bot = obb_bottom_center(u, v, w, h, np.rad2deg(r), ratio=OBB_GRASP_RATIO)
-            wx, wy, z_grasp = self._project(cap, u_bot, v_bot, BLOCK_SIZE / 2.0)
+            wx, wy, z_grasp = self._project(cap, u_bot, v_bot, self._grasp_height)
 
             # Cube = square top face, so fold the yaw into [-45,45] via its 90°
             # symmetry — the wrist then never rolls more than 45° for an

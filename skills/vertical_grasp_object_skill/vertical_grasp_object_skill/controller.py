@@ -12,11 +12,11 @@ motion. The caller supplies where to pick and where to place; the end-effector
 pose depends only on the 6 arm joints (head and arm are separate branches off
 ``link_base``), so the head is never touched.
 
-It reuses the pure-compute stack the D1 grasp pipeline already provides — the
-``D1Kinematics`` FK/IK, the SLSQP solver in ``block_grasp.ik_scipy`` and the
-motion/hand tunables in ``block_grasp.config`` (imported from the Beingbeyond_D1
-repo via ``BEINGBEYOND_PATH``) — and drives the hardware through injected
-primitive handles (``robot``, ``hand``).
+It reuses the pure-compute stack the D1 grasp pipeline provides — the SLSQP
+solver in ``block_grasp.ik_scipy`` and the motion/hand tunables in
+``block_grasp.config`` (VENDORED into this package; see ``../block_grasp/``) plus
+``D1Kinematics`` FK/IK from the ``beingbeyond_d1_sdk`` wheel — and drives the
+hardware through injected primitive handles (``robot``, ``hand``).
 """
 from __future__ import annotations
 
