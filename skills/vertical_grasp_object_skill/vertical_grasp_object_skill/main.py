@@ -142,6 +142,8 @@ def _controller_or_none():
 _COLOR_ALIASES = {
     "red_cube": "red_cube", "red": "red_cube", "红": "red_cube",
     "红色": "red_cube", "红色积木": "red_cube", "红方块": "red_cube",
+    "blue_cube": "blue_cube", "blue": "blue_cube", "蓝": "blue_cube",
+    "蓝色": "blue_cube", "蓝色积木": "blue_cube", "蓝方块": "blue_cube",
     "green_cube": "green_cube", "green": "green_cube", "绿": "green_cube",
     "绿色": "green_cube", "绿色积木": "green_cube", "绿方块": "green_cube",
     "yellow_cube": "yellow_cube", "yellow": "yellow_cube", "黄": "yellow_cube",
@@ -397,7 +399,7 @@ def stack_cubes(req: StackCubes_Request) -> StackCubes_Response:
     `top_color`  — colour of the cube to pick up and place ON TOP.
     `base_color` — colour of the cube to leave on the table as the BASE.
     Both accept Chinese or English colour words or the class name: "红" / "红色" /
-    "红色积木" / "red" / "red_cube". Trained cube colours are red / green / yellow.
+    "红色积木" / "red" / "red_cube". Trained cube colours are red / blue / green / yellow.
     `top_color` and `base_color` must be DIFFERENT colours.
 
     Optional `gripper` sets how tightly to close on the top cube: 0.0 (open) /

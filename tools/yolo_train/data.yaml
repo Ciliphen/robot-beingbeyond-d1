@@ -10,9 +10,10 @@ val: images/val
 # 类别名——顺序即索引，必须与 json2label.py 的 CLASS_NAMES 完全一致。
 names:
   0: red_cube
-  1: green_cube
-  2: yellow_cube
-nc: 3
+  1: blue_cube
+  2: green_cube
+  3: yellow_cube
+nc: 4
 
 # 数据增强（可选，取消注释覆盖默认）
 # hsv_h: 0.15

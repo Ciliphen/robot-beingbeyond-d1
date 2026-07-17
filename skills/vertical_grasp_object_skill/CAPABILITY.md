@@ -148,7 +148,7 @@ stack cubes, call this** instead of chaining `detect_cubes` + `pick_cube` +
 Returns `{ok, message}`. `ok=true` **iff** the top cube was grasped **and**
 released on top of the base cube. On failure `message` names the step that failed
 (cube not detected / grasp failed / place failed) and lists which classes were
-detected, so the caller can retry. Trained cube colours: **red / green /
+detected, so the caller can retry. Trained cube colours: **red / blue / green /
 yellow**. The XY comes from the base cube's detected centre and the release
 `z = base cube centre z + block_height` (config, 5 cm default); the top cube's
 grasp angle aligns the pick, the base cube's angle aligns the release.
