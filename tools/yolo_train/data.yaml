@@ -1,0 +1,30 @@
+# YOLO OBB dataset configuration.
+# path 指向本目录下的 dataset/（json2label.py 的输出）。
+# 若把 dataset/ 放到别处，把 path 改成绝对路径即可。
+# 参考: https://docs.ultralytics.com/datasets/obb/
+
+path: ./dataset
+train: images/train
+val: images/val
+
+# 类别名——顺序即索引，必须与 json2label.py 的 CLASS_NAMES 完全一致。
+names:
+  0: red_cube
+  1: green_cube
+  2: yellow_cube
+nc: 3
+
+# 数据增强（可选，取消注释覆盖默认）
+# hsv_h: 0.15
+# hsv_s: 0.8
+# hsv_v: 0.5
+# degrees: 180.0
+# translate: 0.6
+# scale: 0.5
+# shear: 30.0
+# perspective: 0.005
+# flipud: 0.5
+# fliplr: 0.5
+# mosaic: 1.0
+# mixup: 0.3
+# cutmix: 0.5
