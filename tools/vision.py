@@ -50,44 +50,8 @@ class RealSenseCamera:
         f = self.threshold.process(f)
         return f
 
-    def _restart_pipeline(self):
-        """Stop and re-start the streaming pipeline after a stall/timeout.
-
-        RealSense occasionally stops delivering frames (USB bandwidth hiccup,
-        cable glitch) without raising — wait_for_frames then blocks forever and
-        the preview freezes while the app keeps running. Restarting the pipeline
-        recovers the stream instead of dying silently.
-        """
-        try:
-            self.pipeline.stop()
-        except Exception:
-            pass
-        time.sleep(0.2)
-        self.profile = self.pipeline.start(self.config)
-        self._started = True
-
-    def get_aligned_frames(self, raw=False, filtered=False,
-                           timeout_ms=5000, max_retries=3):
-        # Bounded wait so a stalled stream surfaces as a timeout we can recover
-        # from, instead of blocking the caller's loop forever (frozen preview).
-        frames = None
-        for attempt in range(max_retries):
-            try:
-                frames = self.pipeline.wait_for_frames(timeout_ms)
-                break
-            except RuntimeError as exc:
-                print(f"[RealSense] wait_for_frames timeout/error "
-                      f"({attempt + 1}/{max_retries}): {exc} — restarting stream",
-                      flush=True)
-                try:
-                    self._restart_pipeline()
-                except Exception as re:
-                    print(f"[RealSense] pipeline restart failed: {re}", flush=True)
-                    time.sleep(0.5)
-        if frames is None:
-            raise RuntimeError(
-                f"RealSense stream did not recover after {max_retries} retries")
-
+    def get_aligned_frames(self, raw=False, filtered=False):
+        frames = self.pipeline.wait_for_frames()
         aligned_frames = self.align.process(frames)
         color_frame = aligned_frames.get_color_frame()
         depth_frame = aligned_frames.get_depth_frame()
