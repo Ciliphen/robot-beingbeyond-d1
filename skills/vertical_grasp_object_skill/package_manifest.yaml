@@ -27,8 +27,8 @@ capabilities:
 
 # Upstream hardware the skill consumes at runtime (discovered via atlas). The
 # arm + hand primitives own the hardware; the skill drives them over gRPC and
-# never opens the serial link / CAN bus itself. No camera: locations are given
-# by the caller, not detected.
+# never opens the serial link / CAN bus itself. The camera primitive provides
+# snapshots consumed by the YOLO/VLM detection stage.
 depends:
   - name: robonix/primitive/arm/get_state
   - name: robonix/primitive/arm/move_joint
