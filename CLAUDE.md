@@ -77,5 +77,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   - `~/robonix-book`：robonix 文档
   - `~/Beingbeyond_D1`：D1 机械臂官方仓库
   - `~/Being-H`：VLA 模型实现代码
+  - `~/my_deploy`：robonix 接入模板
 - 工作原则：
   - 涉及 robonix 的改动，先对照对应仓库与文档，再动手。
