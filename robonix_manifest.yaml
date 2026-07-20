@@ -44,7 +44,7 @@ system:
 # The vertical_grasp_object skill consumes d1_arm + d1_hand + d1_camera over gRPC, all
 # shipped in this repo under ./primitives/ (they own the serial link / CAN bus /
 # RealSense; arm+hand depend only on the beingbeyond_d1_sdk wheel + robonix_api,
-# d1_camera also uses vision.RealSenseCamera from BEINGBEYOND_PATH). The camera
+# d1_camera vendors vision.RealSenseCamera into its package at build time). The camera
 # feeds the skill's detect_cubes (YOLO) tool; run it at the hand-eye calibration
 # resolution (1280x720) so detections resolve correctly.
 primitive:

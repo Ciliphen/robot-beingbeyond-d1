@@ -45,7 +45,7 @@ robot-beingbeyond-d1/
 技能是纯 robonix **消费者**:`on_activate` 经 atlas 发现并连接 `d1_arm`/`d1_hand`/`d1_camera`
 三个 primitive,通过其 gRPC 契约驱动;自身不开串口/CAN/RealSense。IK/FK、YOLO、手眼投影
 均本地纯计算(`object_detect` + `block_grasp` 已 vendored 进包,FK/IK 来自
-`beingbeyond_d1_sdk` wheel,无需外部 `BEINGBEYOND_PATH`)。`detect_objects` / `verify_grasp`
+`beingbeyond_d1_sdk` wheel,无需依赖外部仓库)。`detect_objects` / `verify_grasp`
 额外需要一个 OpenAI 兼容 VLM 端点。
 
 ## 语音

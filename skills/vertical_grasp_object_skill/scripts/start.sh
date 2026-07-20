@@ -5,7 +5,7 @@
 # (beingbeyond_d1_sdk cp310, scipy) plus the robonix skill deps (robonix_api,
 # mcp, fastmcp, grpcio) and cv2 / ultralytics for detection. The YOLO detection
 # (object_detect/) and the grasp geometry/IK/config (block_grasp/) are VENDORED
-# into this package root, so no BEINGBEYOND_PATH is needed. Only beingbeyond_d1_sdk
+# into this package root, so no external repo is needed. Only beingbeyond_d1_sdk
 # (D1Kinematics FK/IK) remains a normal conda/pip dependency in the env.
 set -eo pipefail
 PKG_ROOT="${RBNX_PACKAGE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"

@@ -18,7 +18,7 @@ The skill is a pure robonix **consumer**: it discovers the `d1_arm` / `d1_hand`
 serial link / CAN bus / RealSense itself. IK/FK, YOLO, and the hand-eye
 projection run locally (pure compute; the `object_detect` + `block_grasp` stacks
 are vendored into this package, FK/IK from the `beingbeyond_d1_sdk` wheel — no
-external `BEINGBEYOND_PATH` needed).
+external repo needed).
 
 ## Interface (6 MCP tools)
 

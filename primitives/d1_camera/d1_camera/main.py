@@ -10,13 +10,12 @@ rpc/MCP snapshot contracts (not the rgb/depth/intrinsics topic_out streams):
   robonix/primitive/camera/depth_snapshot  rpc (MCP)  one depth frame, normalized JPEG
   robonix/primitive/camera/driver          rpc        lifecycle (wired to on_init)
 
-Wraps vision.RealSenseCamera (pyrealsense2) from the Beingbeyond_D1 repo.
+Wraps vision.RealSenseCamera (pyrealsense2) from this repo's tools/ dir.
 Resolution / frame come from primitive config or D1_CAMERA_* env vars.
 """
 from __future__ import annotations
 
 import os
-import sys
 import threading
 import time
 from io import BytesIO
@@ -24,11 +23,6 @@ from io import BytesIO
 import numpy as np
 
 from robonix_api import Primitive, Ok, Err
-
-# Make the Beingbeyond_D1 repo importable (vision.py lives at the repo root).
-_ROOT = os.environ.get("BEINGBEYOND_PATH", os.path.expanduser("~/Beingbeyond_D1"))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
 
 d1_camera = Primitive(id="d1_camera", namespace="robonix/primitive/camera")
 
@@ -165,9 +159,12 @@ def init(cfg):
     _frame_id = cfg.get("frame_id") or os.environ.get("D1_CAMERA_FRAME_ID", "camera")
 
     try:
-        from vision import RealSenseCamera
+        from d1_camera.vision import RealSenseCamera
     except Exception as exc:  # noqa: BLE001
-        return Err(f"import RealSenseCamera failed (BEINGBEYOND_PATH={_ROOT}): {exc}")
+        return Err(
+            "import RealSenseCamera failed — vision.py not vendored into the "
+            f"package (run scripts/build.sh): {exc}"
+        )
 
     try:
         cam = RealSenseCamera(width=width, height=height, hz=fps)

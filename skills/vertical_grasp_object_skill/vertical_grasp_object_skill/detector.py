@@ -11,7 +11,7 @@ The maths mirror the D1 grasp pipeline's ``detect_blocks`` so detected positions
 line up with what the pick pipeline expects. The pure-compute perception stack
 (YOLO loader/inference in ``object_detect``, OBB geometry helpers + tunables in
 ``block_grasp``) is VENDORED into this package (see ``../object_detect/`` and
-``../block_grasp/``), so the skill needs no external ``BEINGBEYOND_PATH``.
+``../block_grasp/``), so the skill needs no external repo.
 
 The camera-aim + homography + perspective-correction plumbing lives in the
 ``HeadCameraProjector`` base class so the VLM detector (``vlm_detector.py``) can
