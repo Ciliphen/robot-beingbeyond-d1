@@ -1,0 +1,28 @@
+manifestVersion: 1
+
+package:
+  name: com.beingbeyond.skill.hand_gesture
+  version: 0.1.0
+  vendor: beingbeyond
+  description: Make the D1 dexterous hand perform a finger "dance" — a rhythmic open/close wiggle across all fingers for a given duration. A single MCP tool for the D1 hand.
+  tags: [skill, gesture, dance, beingbeyond-d1]
+  maintainers:
+    - Felix <xi.lifeng@qq.com>
+  license: MulanPSL-2.0
+
+build: bash scripts/build.sh
+start: bash scripts/start.sh
+
+# Package-local contract: this skill owns its interface (it IS the new
+# capability). The codegen step picks these up from ./capabilities and, with
+# --mcp, emits the typed Request/Response classes used in main.py.
+capabilities:
+  - name: robonix/skill/hand_gesture/driver
+  - name: robonix/skill/hand_gesture/gesture_dance
+
+# Upstream hardware the skill consumes at runtime (discovered via atlas). The
+# hand primitive owns the CAN bus; the skill drives it over gRPC and never
+# opens the CAN bus itself. No arm / camera needed — the dance is hand-only.
+depends:
+  - name: robonix/primitive/hand/move_joint
+  - name: robonix/primitive/hand/info

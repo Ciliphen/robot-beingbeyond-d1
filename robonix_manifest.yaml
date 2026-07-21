@@ -128,3 +128,12 @@ skill:
       # stack_cubes: one cube height (m); the top cube is released at
       # base_cube_z + block_height so it lands one cube above the base.
       block_height: 0.05
+
+  # hand_gesture: one MCP tool (gesture_dance). pilot dispatches to it through
+  # executor when the user asks the hand to "dance" / wiggle its fingers. Hand-
+  # only — consumes just d1_hand (hand/move_joint + hand/info) over gRPC; no
+  # arm, camera, model, or calibration. No tunable config (the per-call
+  # duration_s is the only knob).
+  - name: hand_gesture
+    path: ./skills/hand_gesture_skill
+    config: {}

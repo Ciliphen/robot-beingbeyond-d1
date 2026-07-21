@@ -1,0 +1,8 @@
+# Make the D1 dexterous hand perform a finger "dance": a rhythmic open/close
+# wiggle across all fingers for the requested duration, then return to open.
+# Request: how long to dance (optional; empty = default 3 s).
+# Response: whether the dance ran, plus a human-readable message.
+string duration_s   # optional: how long to dance, in seconds (e.g. "5"); empty = default 3 s
+---
+bool ok             # true if the dance ran to completion
+string message      # human-readable status / error detail

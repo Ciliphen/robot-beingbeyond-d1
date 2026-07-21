@@ -1,0 +1,11 @@
+# MCP-callable "make the hand dance" tool. The LLM picks this up via pilot when
+# the user says something like "跳个舞" / "let the hand dance" / "动动手指" —
+# the handler docstring in main.py is what the LLM reads.
+[contract]
+id      = "robonix/skill/hand_gesture/gesture_dance"
+version = "1"
+kind    = "skill"
+idl     = "hand_gesture/srv/GestureDance.srv"
+
+[mode]
+type = "rpc"
