@@ -89,11 +89,13 @@ service:
     config: {}
 
 # ── Skills ───────────────────────────────────────────────────────────
-# vertical_grasp_object: six MCP tools (detect_cubes / detect_objects / pick_cube /
-# place_cube / verify_grasp / stack_cubes). pilot dispatches to it through executor
-# when the user asks to find / pick up / put down an object (pick_cube / place_cube
-# also take an optional grasp angle and gripper aperture), or to STACK cubes
-# (stack_cubes — give two colours, it detects+picks+places in one call). detect_cubes (YOLO, fixed cube
+# vertical_grasp_object: seven MCP tools (detect_cubes / detect_objects / pick_cube /
+# place_cube / verify_grasp / stack_cubes / put_cube_in_container). pilot dispatches to
+# it through executor when the user asks to find / pick up / put down an object
+# (pick_cube / place_cube also take an optional grasp angle and gripper aperture), to
+# STACK cubes (stack_cubes — give two colours, it detects+picks+places in one call), or
+# to put a cube INTO a box/plate (put_cube_in_container — give one colour, it
+# detects+picks+places at the fixed container spot in one call). detect_cubes (YOLO, fixed cube
 # classes) needs the weights + hand-eye calibration under
 # ./skills/vertical_grasp_object_skill/models/ (see that dir's README; git-ignored).
 # detect_objects (open-vocabulary via a VLM) shares that calibration and needs a

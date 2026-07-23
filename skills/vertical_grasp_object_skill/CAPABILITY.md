@@ -20,7 +20,7 @@ projection run locally (pure compute; the `object_detect` + `block_grasp` stacks
 are vendored into this package, FK/IK from the `beingbeyond_d1_sdk` wheel — no
 external repo needed).
 
-## Interface (6 MCP tools)
+## Interface (7 MCP tools)
 
 All under the `robonix/skill/vertical_grasp_object/*` namespace. Coordinates are base-frame
 metres; a location string is `"x,y"` (Z = configured `pick_z`), `"x,y,z"`, or a
@@ -157,6 +157,32 @@ grasp angle aligns the pick, the base cube's angle aligns the release.
 this does not confirm the cube stayed stacked — it is a planar-XY + geometric-Z
 placement. For a success check, call `verify_grasp` (VLM) afterwards. To build a
 taller tower, call `stack_cubes` repeatedly (each call re-detects the scene).
+
+### `robonix/skill/vertical_grasp_object/put_cube_in_container` — **preferred for "put a cube in the box/plate"**
+
+Put one coloured cube into the **fixed container** (box / plate / bowl) in a
+**single call**: detect the cube (YOLO), pick it up, and release it at the fixed
+container drop-off position, then park the arm. **Whenever the user wants to put
+/ drop a cube into a box / plate / bowl, call this** instead of chaining
+`detect_cubes` + `pick_cube` + `place_cube` yourself.
+
+| param     | type   | default | meaning                                                                                    |
+|-----------|--------|---------|--------------------------------------------------------------------------------------------|
+| `color`   | string | —       | Colour of the cube to pick up and drop in. Chinese/English/class name: `"红色"` / `"red"` / `"red_cube"`. Trained colours: red / blue / green / yellow. |
+| `gripper` | string | ""      | Optional close amount on the cube: `0.0` (open) / `0.5` (standard) / `1.0` (tightest); empty = standard grasp. |
+
+Returns `{ok, message}`. `ok=true` **iff** the cube was grasped **and** released
+into the container. On failure `message` names the step that failed (cube not
+detected / grasp failed / place failed) and lists which classes were detected, so
+the caller can retry. The **destination is fixed** (the configured container spot,
+base frame `(0.160, -0.245)`) — the caller does **not** supply a destination. The
+cube is released at the **same Z it was grasped at** (the detected cube centre,
+one table plane), so it drops just above the table inside the container.
+
+**No landed-in-container verification.** Like `detect_cubes`, YOLO has no depth,
+so this does not confirm the cube ended up inside the container — it is a
+planar-XY placement at the fixed spot. For a success check, call `verify_grasp`
+(VLM) afterwards.
 
 ## Usage pattern (recommended closed loop)
 

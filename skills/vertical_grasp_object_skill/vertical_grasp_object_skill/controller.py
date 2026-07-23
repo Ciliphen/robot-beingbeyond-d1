@@ -52,6 +52,7 @@ from block_grasp.config import (
     IK_Z_WEIGHT,
     INTERP_STEP_SIZE,
     JOINT_JUMP_THR_DEG,
+    Z_SAFE,
 )
 
 # Skill-local park / home pose (base frame, metres). move_home parks the arm
@@ -382,8 +383,9 @@ class GraspCubeController:
         self._hand.set_joint_pos(grasp_vec)
         time.sleep(CATCH_DELAY_S)
 
-        print("[Pick] Lifting ...", flush=True)
-        if not self._interpolate_and_move(T_approach, j6_offset_rad=j6):
+        print(f"[Pick] Lifting to safe height Z={Z_SAFE:.2f} ...", flush=True)
+        T_lift = self._make_target_pose(x, y, max(z_approach, Z_SAFE))
+        if not self._interpolate_and_move(T_lift, j6_offset_rad=j6):
             print("[Pick] Lift failed (object may still be grasped).", flush=True)
         time.sleep(CATCH_DELAY_S)
 
@@ -417,7 +419,11 @@ class GraspCubeController:
         release). Clears the holding flag. Warns (but proceeds) if no successful
         pick preceded this.
         """
-        z_approach = z + APPROACH_HEIGHT_OFFSET
+        # Travel to above the target at the safe height (the arm is holding the
+        # object up at Z_SAFE after pick), so the horizontal move happens high and
+        # the descent to the release point is purely vertical — reach the target
+        # (x, y) first, then drop straight down.
+        z_approach = max(z + APPROACH_HEIGHT_OFFSET, Z_SAFE)
         loc = [round(x, 3), round(y, 3), round(z, 3)]
         j6 = self._j6_offset_rad(angle_deg)
         release_vec = self._hand_vector(0.0 if gripper is None else gripper)

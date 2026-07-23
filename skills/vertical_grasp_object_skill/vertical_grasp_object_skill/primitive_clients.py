@@ -53,8 +53,8 @@ class PrimitiveArm:
         move_joint_stub,
         arm_pb2,
         set_head_stub=None,
-        arm_tol: float = 0.03,
-        timeout: float = 8.0,
+        arm_tol: float = 0.06,
+        timeout: float = 1.0,
         poll: float = 0.03,
         settle_eps: float = 0.003,
         settle_polls: int = 3,
@@ -132,6 +132,17 @@ class PrimitiveArm:
         moves at all. Returns True on reached/settled, False on timeout."""
         _ = active_joint_indices
         arm6 = self._arm6(q)
+        # No-op guard: if the command barely moves the arm (target already within
+        # arm_tol of where it is right now), return immediately instead of
+        # entering the wait loop. Such a near-zero move never triggers the settle
+        # exit (the arm doesn't move, so the ``moved`` latch stays False), and a
+        # steady-state tracking offset can keep the exact-match check from ever
+        # passing — so without this the call would burn the full timeout spinning.
+        # (e.g. releasing then "lifting back" to the same approach pose, or a home
+        # move that resolves to nearly the current joints.)
+        start = self._read_arm()
+        if max((abs(t - s) for t, s in zip(arm6, start)), default=0.0) <= self._arm_tol:
+            return True
         deadline = time.time() + (self._timeout if timeout is None else timeout)
         prev: list[float] | None = None
         still = 0

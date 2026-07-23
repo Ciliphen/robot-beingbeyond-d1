@@ -50,7 +50,14 @@ from vertical_grasp_object_mcp import (  # noqa: E402
     DetectObjects_Request, DetectObjects_Response,
     VerifyGrasp_Request, VerifyGrasp_Response,
     StackCubes_Request, StackCubes_Response,
+    PutCubeInContainer_Request, PutCubeInContainer_Response,
 )
+
+# Fixed container drop-off spot (base frame, metres): the XY where
+# put_cube_in_container releases the cube. The release Z is NOT fixed here — it
+# reuses the detected cube's grasp Z (calibrated table plane + half a cube), so
+# pick and place share one table plane and the cube drops just above the table.
+_CONTAINER_XY = (0.160, -0.245)
 
 # Package root (the vertical_grasp_object_skill dir holding models/, capabilities/, ...),
 # used to resolve the default model / calibration paths.
@@ -486,6 +493,99 @@ def stack_cubes(req: StackCubes_Request) -> StackCubes_Response:
         ok=True,
         message=(f"stacked {top_cls} onto {base_cls}: picked ({top['x']}, {top['y']}, "
                  f"{top['z']}), released at ({base['x']}, {base['y']}, {place_z})"))
+
+
+@vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/put_cube_in_container")
+def put_cube_in_container(req: PutCubeInContainer_Request) -> PutCubeInContainer_Response:
+    """把方块放进盒子/盘子里：把一个颜色的方块抓起来，放到固定的容器位置（一次调用完成）。
+    PREFERRED whenever the user wants to put / drop a coloured cube INTO a box /
+    plate / bowl / container, e.g. "把红色方块放到盒子里" / "把蓝色积木放进盘子" /
+    "put the red cube in the box". Call THIS instead of orchestrating detect_cubes
+    + pick_cube + place_cube yourself — it does the WHOLE job in one call: detect
+    the `color` cube with the head camera + YOLO, pick it up, and release it at the
+    FIXED container drop-off position (configured in the skill), then park the arm.
+
+    `color` — colour of the cube to pick up and drop in. Accepts Chinese or English
+    colour words or the class name: "红" / "红色" / "红色积木" / "red" / "red_cube".
+    Trained cube colours are red / blue / green / yellow.
+
+    Optional `gripper` sets how tightly to close on the cube: 0.0 (open) / 0.5
+    (standard grasp, the default for a 5 cm cube) / 1.0 (tightest); empty =
+    standard grasp.
+
+    The destination is the FIXED container position — the caller does NOT supply
+    it. Returns ok=true iff the cube was actually grasped AND released into the
+    container. On failure the message names the step that failed (cube not
+    detected / grasp failed / place failed) so you can retry. Like detect_cubes,
+    YOLO has no depth, so this does NOT visually verify the cube landed inside the
+    container — use verify_grasp (VLM) after if you need a success check."""
+    ctrl = _controller_or_none()
+    det = _state["detector"]
+    if ctrl is None or det is None:
+        return PutCubeInContainer_Response(
+            ok=False, message="skill not activated (no arm/hand/camera connection)")
+
+    try:
+        cls = _resolve_color(req.color)
+    except ValueError as exc:
+        return PutCubeInContainer_Response(ok=False, message=f"bad argument: {exc}")
+    try:
+        gripper = _parse_opt_float(req.gripper, "gripper")
+    except ValueError as exc:
+        return PutCubeInContainer_Response(ok=False, message=f"bad argument: {exc}")
+
+    cx, cy = _CONTAINER_XY
+    try:
+        with _state["lock"]:
+            # 1) Detect — park at home first (unobstructed camera view, fixed
+            #    workspace-clamp centre), then run YOLO once and pick the target.
+            ctrl.move_home()
+            cubes = det.detect()
+
+            cube = _pick_best(cubes, cls)
+            if cube is None:
+                found = sorted({c.get("class_name") for c in cubes})
+                return PutCubeInContainer_Response(
+                    ok=False,
+                    message=f"cube not found: {cls}. detected: {found or 'none'}")
+
+            # 2) Pick the cube (its own grasp angle aligns the gripper).
+            pick = ctrl.pick(cube["x"], cube["y"], cube["z"],
+                             angle_deg=cube.get("grasp_angle_deg"), gripper=gripper)
+            if not pick.get("ok"):
+                try:
+                    ctrl.move_home()
+                except Exception:  # noqa: BLE001
+                    log.exception("move_home after failed pick failed")
+                return PutCubeInContainer_Response(
+                    ok=False,
+                    message=f"failed to grasp {cls} at "
+                            f"({cube['x']}, {cube['y']}, {cube['z']}): {pick.get('message')}")
+
+            # 3) Release at the fixed container spot. Use the SAME Z the cube was
+            #    grasped at (cube["z"] = calibrated table plane + half a cube, from
+            #    the detector) — pick and place share one table plane, so releasing
+            #    at the grasp Z drops the cube just above the table without the hand
+            #    diving into it. (Do NOT use the raw pick_z here: that is an
+            #    absolute value not referenced to the calibrated table plane, and
+            #    would descend ~table_z too low → hand hits the table.) Then park
+            #    so the drop-off is unobstructed for any follow-up check.
+            place = ctrl.place(cx, cy, cube["z"])
+            if place.get("ok"):
+                ctrl.move_home()
+            if not place.get("ok"):
+                return PutCubeInContainer_Response(
+                    ok=False,
+                    message=f"grasped {cls} but failed to release it into the container at "
+                            f"({cx}, {cy}): {place.get('message')}")
+    except Exception as exc:  # noqa: BLE001
+        log.exception("put_cube_in_container failed")
+        return PutCubeInContainer_Response(ok=False, message=f"error: {exc}")
+
+    return PutCubeInContainer_Response(
+        ok=True,
+        message=(f"put {cls} into the container: picked ({cube['x']}, {cube['y']}, "
+                 f"{cube['z']}), released at ({cx}, {cy}, {cube['z']})"))
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────
