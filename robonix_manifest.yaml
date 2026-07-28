@@ -15,10 +15,16 @@ catalog:
 # unset resolves to the WSL default gateway (= Windows host under NAT), so it
 # survives WSL restarts changing the IP. Selecting `custom` also keeps
 # `rbnx build` from pulling Torch/CUDA/FunASR/Whisper.
+#
+# TTS reuses the speech package's Tencent Cloud TextToVoice backend under the
+# same `custom` umbrella, so ASR stays on Paddle while replies get spoken.
+# TencentTTSBackend needs only SecretId/SecretKey (the ASR AppID is not used);
+# export them in the operator shell before `rbnx boot` — see .env.example.
 env:
   SPEECH_BACKEND: custom
   SPEECH_ASR_STREAM_BACKEND_CLASS: speech_service.paddle_asr:PaddleStreamingASRBackend
   SPEECH_ASR_BACKEND_CLASS: speech_service.paddle_asr:PaddleStreamingASRBackend
+  SPEECH_TTS_BACKEND_CLASS: speech_service.tencent_cloud:TencentTTSBackend
   PADDLE_ASR_PORT: "8090"
 
 # Robonix system services. atlas / executor / pilot / liaison ship with
@@ -79,14 +85,27 @@ primitive:
       mic_device: pulse
       speaker_device: pulse
 
-# speech — ASR only (no TTS). Custom backend forwards 16k/mono/pcm_s16le to an
-# external PaddleSpeech streaming ASR service over WebSocket (see
-# speech_service/paddle_asr.py). Liaison's voice loop connects to asr_stream;
-# TTS is intentionally absent, so voice replies fall back to text PILOT events.
+# speech — ASR via PaddleSpeech, TTS via Tencent Cloud. The custom ASR backend
+# forwards 16k/mono/pcm_s16le to an external PaddleSpeech streaming service over
+# WebSocket (see speech_service/paddle_asr.py); TTS returns 16 kHz mono
+# pcm_s16le, which the audio_driver speaker primitive plays directly. Liaison's
+# voice loop uses asr_stream + tts + speaker; the speech/speak MCP tool lets
+# pilot announce arbitrary text on the same speaker.
 service:
   - name: speech
     path: ${ROBONIX_SOURCE_PATH}/services/speech
-    config: {}
+    config:
+      # 1001 = zhiyu (basic model). Verified end-to-end: "机械臂已就位" returns
+      # 58240 PCM bytes ≈ 1.82 s at 16 kHz. The premium sibling 101001 returned
+      # only 5888 bytes (≈0.18 s) for the same text — audio truncated despite an
+      # HTTP success — so stay on the basic voice until that is understood.
+      # ModelType/SampleRate/Codec keep the default 1 / 16000 / pcm, which
+      # already matches what the speaker primitive expects.
+      tencent_tts_voice_type: 1001
+      tencent_tts_region: ap-guangzhou
+      # Only one speaker provider exists in this deployment (audio_driver), so
+      # speech/speak can resolve it without pilot passing an explicit target.
+      default_speaker_provider_id: audio_driver
 
 # ── Skills ───────────────────────────────────────────────────────────
 # vertical_grasp_object: seven MCP tools (detect_cubes / detect_objects / pick_cube /
