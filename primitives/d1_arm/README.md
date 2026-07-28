@@ -30,7 +30,9 @@ robonix 原语。直连 `beingbeyond_d1_sdk` 的 HeadArm 串口链路，**无 RO
 
 ## 依赖与权限
 
-- Python ≥ 3.10，装有 `beingbeyond_d1_sdk`（cp310 wheel）与 `robonix_api`。
+- Python **3.10**（wheel 是 `cp310` + `manylinux_2_17_x86_64`，非 3.10 装不上）。
+- `beingbeyond_d1_sdk`（≥ 0.2.0）与 `robonix_api`。SDK wheel 随 `robot-beingbeyond-d1`
+  部署仓的 `tools/func_verify/lib/` 提供，`pip install` 该 whl 即可。
 - 串口权限：`sudo chmod 666 /dev/ttyUSB0`，或把用户加入 `dialout` 组。
 - `scripts/start.sh` 默认用 `$HOME/miniconda3/envs/bb_d1_robonix/bin/python3`，
   可用 `BLOCK_GRASP_PYTHON` 覆盖。

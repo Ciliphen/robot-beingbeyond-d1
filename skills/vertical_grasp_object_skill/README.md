@@ -74,9 +74,11 @@ rbnx chat               # 例："把红色方块叠到蓝色方块上"
 技能类包在 `rbnx boot` 后停在 `INACTIVE`，首次 MCP 调用由 executor 触发 `CMD_ACTIVATE`——
 这是预期状态，不是启动失败。
 
-`scripts/start.sh` 默认用 `$HOME/miniconda3/envs/bb_d1_robonix/bin/python3`（含
-`beingbeyond_d1_sdk` wheel、`ultralytics`、`numpy`/`scipy`、`robonix_api`、`grpcio`），
-可用 `VERTICAL_GRASP_OBJECT_PYTHON` 覆盖。无额外清理动作，故不提供 `scripts/stop.sh`。
+`scripts/start.sh` 默认用 `$HOME/miniconda3/envs/bb_d1_robonix/bin/python3`，
+可用 `VERTICAL_GRASP_OBJECT_PYTHON` 覆盖。该环境需要 Python **3.10**（SDK wheel 是
+`cp310` + `manylinux_2_17_x86_64`）并装有 `beingbeyond_d1_sdk`（≥ 0.2.0，提供 FK/IK；
+wheel 随 `robot-beingbeyond-d1` 部署仓的 `tools/func_verify/lib/` 提供）、`ultralytics`、
+`numpy`/`scipy`、`robonix_api`、`grpcio`。无额外清理动作，故不提供 `scripts/stop.sh`。
 
 ## 安全
 

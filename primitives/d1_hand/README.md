@@ -30,7 +30,9 @@ robonix 原语。直连 `beingbeyond_d1_sdk` 的 DexHand CAN 链路，**无 ROS 
 
 ## 依赖与权限
 
-- Python ≥ 3.10，装有 `beingbeyond_d1_sdk`（cp310 wheel）与 `robonix_api`。
+- Python **3.10**（wheel 是 `cp310` + `manylinux_2_17_x86_64`，非 3.10 装不上）。
+- `beingbeyond_d1_sdk`（≥ 0.2.0）与 `robonix_api`。SDK wheel 随 `robot-beingbeyond-d1`
+  部署仓的 `tools/func_verify/lib/` 提供，`pip install` 该 whl 即可。
 - CAN 权限：DexHand 在 init 阶段会执行 `ip link set …` 拉起接口。若不以 root 运行，
   需预先手动拉起接口，或导出 `PREFLIGHT_SUDO_PASS`。
 - `scripts/start.sh` 默认用 `$HOME/miniconda3/envs/bb_d1_robonix/bin/python3`，

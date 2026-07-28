@@ -6,6 +6,8 @@
 核心是**灵巧手物体抓放技能**（`vertical_grasp_object`，8 个 MCP 工具），另带一个
 `hand_gesture` 手势技能。由 `rbnx chat`（文字）或语音链路经 pilot 触发。
 
+<img src="./assets/robot.jpg" alt="BeingBeyond D1 桌面机器人" width="560">
+
 ## 能力
 
 | 工具 | 作用 |
@@ -76,6 +78,7 @@ robot-beingbeyond-d1/
 ├── robonix_manifest.yaml   # 部署清单：系统服务 + 语音 + 4 原语 + speech + 2 技能
 ├── soma.yaml               # D1 body model（urdf.path → ./urdf/）
 ├── .env.example            # VLM + 腾讯云 TTS 凭据模板（copy 为 .env）
+├── assets/                 # robot.jpg（catalog 预览图）+ bb_d1.png（原图）
 ├── urdf/
 │   ├── robot_right_hand.urdf   # 整机 URDF（供 soma / IK 用），根 link = link_base
 │   └── meshes/                 # URDF 引用的 STL（含 right_hand/）
@@ -114,7 +117,9 @@ WSLg 无真实声卡故 `arecord -l` 为空，设备必须显式设为 `pulse`�
 
 ## 部署与启动
 
-前置：Python 3.10 环境 `bb_d1_robonix`（含 D1 SDK wheel + `ultralytics` + robonix/mcp 依赖），
+前置：Python 3.10 环境 `bb_d1_robonix`（`ultralytics` + robonix/mcp 依赖，外加
+`pip install tools/func_verify/lib/beingbeyond_d1_sdk-0.2.0-cp310-*.whl` —— 本仓自带该
+wheel，`cp310` + `manylinux_2_17_x86_64`，故环境必须是 Python 3.10/x86_64），
 `d1_arm`/`d1_hand`/`d1_camera` 硬件就绪且总线权限已配，YOLO 权重与手眼标定放在
 `skills/vertical_grasp_object_skill/models/`（`best.pt` + `handeye_calib.npz`，见该目录 README）。
 如需语音，先起外部 PaddleSpeech ASR 服务。

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Start the D1 head camera primitive.
 #
-# Runs on the same Python 3.10 env as the grasp skill (has pyrealsense2 +
-# beingbeyond stack AND robonix_api / mcp / grpcio). See ../../env_setup.sh.
+# Runs on a Python 3.10 env holding pyrealsense2 AND robonix_api / mcp / grpcio
+# (see README.md).
 set -euo pipefail
 echo "[d1_camera] starting..."
 

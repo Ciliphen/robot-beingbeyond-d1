@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Start the D1 dexterous-hand primitive.
 #
-# Runs on the same Python 3.10 env as the grasp skill (has the beingbeyond_d1_sdk
-# cp310 wheel AND robonix_api / grpcio). See ../../env_setup.sh.
+# Runs on a Python 3.10 env holding the beingbeyond_d1_sdk cp310 wheel AND
+# robonix_api / grpcio (see README.md).
 #
 # NOTE: DexHand brings the CAN interface up at init (`ip link set …`). If this
 # process is not root, export PREFLIGHT_SUDO_PASS so the SDK's `sudo -S` works,

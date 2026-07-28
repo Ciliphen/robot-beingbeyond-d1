@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Start the D1 arm primitive.
 #
-# Runs on the same Python 3.10 env as the grasp skill (has the beingbeyond_d1_sdk
-# cp310 wheel + numpy/scipy AND robonix_api / grpcio). See ../../env_setup.sh.
+# Runs on a Python 3.10 env holding the beingbeyond_d1_sdk cp310 wheel +
+# numpy/scipy AND robonix_api / grpcio (see README.md).
 #
 # NOTE: the HeadArm chain (arm + head) shares one serial device (/dev/ttyUSB0).
 # Do NOT run this at the same time as the block_grasp skill or any other process
