@@ -1,19 +1,24 @@
-# 检测资产（本机专属，未提交）
+# Detection assets (robot-specific, not committed)
 
-`vertical_grasp_object` 技能的检测链路需要两个文件。它们与**这台机器**的相机安装位置和
-桌面高度绑定，且体积大，所以既不提交进本仓，也不放在技能包里——技能包由
-`robonix_manifest.yaml` 的 `url:` 拉取到 `rbnx-boot/cache/`，那份 `models/` 始终是空的。
+*[中文版](./README_CN.md)*
 
-| 文件 | 内容 | 来源 |
+The `vertical_grasp_object` skill's detection stage needs two files. They are tied
+to **this** robot's camera mount and table height, and they are large, so they are
+neither committed here nor kept in the skill package — the skill is fetched by the
+manifest's `url:` into `rbnx-boot/cache/`, where its `models/` dir is always empty.
+
+| File | What it is | Where it comes from |
 |---|---|---|
-| `best.pt` | YOLO-OBB 方块检测权重（约 113 MB） | 用 `tools/yolo_train/` 训练链路（`json2label.py` → `train.py`），产物在 `runs/<run>/weights/best.pt` |
-| `handeye_calib.npz` | 相机→base 手眼单应 + 头部位姿 + 桌面 Z | 在本台机器上跑 `tools/arm_calibration/calibrate_handeye.py` |
+| `best.pt` | YOLO-OBB cube-detection weights (~113 MB) | train with `tools/yolo_train/` (`json2label.py` → `train.py`); the artefact lands in `runs/<run>/weights/best.pt` |
+| `handeye_calib.npz` | camera→base hand-eye homography + head pose + table Z | run `tools/arm_calibration/calibrate_handeye.py` on this robot |
 
-把两个文件直接放在本目录。清单以绝对路径 `${D1_DEPLOY_DIR}/models/...` 指向它们
-（`D1_DEPLOY_DIR` 在清单的 `env:` 里设定），因此 `rbnx clean --cache` 重新拉取技能包
-不会影响这两个文件。
+Put both files directly in this directory. The manifest points at them by absolute
+path as `${D1_DEPLOY_DIR}/models/...` (`D1_DEPLOY_DIR` is set in the manifest's
+`env:` block), so `rbnx clean --cache` re-fetching the skill package does not
+disturb them.
 
-只有 `detect_cubes`（YOLO）需要 `best.pt`；`handeye_calib.npz` 则是**两个检测器共用**的
-几何真值——缺它 `detect_objects` 也无法工作。
+Only `detect_cubes` (YOLO) needs `best.pt`. `handeye_calib.npz` is the geometric
+ground truth **shared by both detectors** — without it `detect_objects` cannot work
+either.
 
-相机重装或桌面高度变化后必须重新标定。
+Re-calibrate after remounting the camera or changing the table height.

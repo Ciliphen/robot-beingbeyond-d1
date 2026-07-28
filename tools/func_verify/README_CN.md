@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="bb_d1.png" width="400" alt="BeingBeyond D1">
+  <img src="../../assets/bb_d1.png" width="400" alt="BeingBeyond D1">
 </p>
 
 # BeingBeyond D1 SDK 示例
+
+*[English](./README.md)*
 
 本仓库提供 BeingBeyond D1 SDK、示例 Python 脚本，以及环境配置与常见问题的基本指引。
 

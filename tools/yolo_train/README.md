@@ -1,69 +1,81 @@
-# YOLO-OBB 方块检测训练
+# YOLO-OBB cube-detection training
 
-训练 `vertical_grasp_object_skill` 用的 YOLO-OBB（有向框）方块检测模型。
-产出的 `best.pt` 就是该 skill `models/best.pt` 的来源，被 `detector.py::CubeDetector`
-加载（经 `detect.py::detect_objects_in_frame`）用于 `detect_cubes`。
+*[中文版](./README_CN.md)*
 
-从 Beingbeyond_D1 参考仓库 `object_detect/` 搬来，路径已改为自包含（相对本目录）。
+Trains the YOLO-OBB (oriented bounding box) cube detector used by the
+`vertical_grasp_object` skill. The resulting `best.pt` is the source of this
+deployment's `models/best.pt`, loaded by the skill's `detector.py::CubeDetector`
+(via `detect.py::detect_objects_in_frame`) to serve `detect_cubes`.
 
-## 目录内容
+Lifted from the Beingbeyond_D1 reference repo's `object_detect/`, with paths
+rewritten to be self-contained (relative to this directory).
 
-| 文件              | 作用                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------ |
-| `capture.py`    | **（第 0 步）** 真机采集：相机预览 + 实时检测 + 头部控制 + 拍照存到 `dataset/raw/` |
-| `../vision.py`  | `capture.py` 用的 RealSense 相机封装（依赖 `pyrealsense2`）。放在 `tools/`，供各工具共用 |
-| `json2label.py` | LabelMe JSON 标注 → YOLO-OBB 标签，并按 8:2 划分 train/val                                |
-| `train.py`      | 用 ultralytics 训练 YOLO11-OBB                                                             |
-| `data.yaml`     | 数据集路径 + 类别定义（训练读它）                                                          |
-| `detect.py`     | 推理函数（与 skill 运行时同一份，供独立测试/参考）                                         |
-| `.gitignore`    | 挡住`dataset/`、`runs/`、`*.pt`（大文件不入库）                                      |
+## Contents
 
-> 数据集、训练产物、基座权重都**不入库**（体积大）。下面说明各自放哪。
+| File | Purpose |
+| --- | --- |
+| `capture.py` | **(step 0)** on-robot capture: camera preview + live detection + head control, saving frames to `dataset/raw/` |
+| `../vision.py` | the RealSense wrapper `capture.py` uses (needs `pyrealsense2`). Kept in `tools/` so every tool shares one copy |
+| `json2label.py` | LabelMe JSON annotations → YOLO-OBB labels, with an 8:2 train/val split |
+| `train.py` | trains YOLO11-OBB via ultralytics |
+| `data.yaml` | dataset paths + class definitions (read by training) |
+| `detect.py` | the inference functions (the same copy the skill runs, kept here for standalone testing/reference) |
+| `.gitignore` | keeps `dataset/`, `runs/`, `*.pt` out of the repo |
 
-## 环境
+> The dataset, training artefacts, and base weights are **not committed** (too
+> large). Where each of them goes is described below.
 
-**训练**（`json2label.py` / `train.py`）需要 GPU 版 ultralytics（参考仓库用 conda `bb_gpu`）：
+## Environment
+
+**Training** (`json2label.py` / `train.py`) needs a GPU build of ultralytics (the
+reference repo uses the conda env `bb_gpu`):
 
 ```bash
-conda activate bb_gpu          # 或你自己的环境
+conda activate bb_gpu          # or your own env
 pip install ultralytics opencv-python numpy
 ```
 
-**真机采集**（`capture.py`）还需要在**接了 D1 机械臂 + RealSense 相机的机器**上跑，额外依赖：
+**On-robot capture** (`capture.py`) additionally has to run on the machine with the
+D1 arm and RealSense attached, and needs:
 
 ```bash
-pip install pyrealsense2       # RealSense SDK（vision.py 用）
-# beingbeyond_d1_sdk：D1 头部/机械臂 SDK，不在本仓库，需装到运行环境
-#                     （参考仓库 conda 环境 bb_d1 里有）
+pip install pyrealsense2       # RealSense SDK (used by vision.py)
+# beingbeyond_d1_sdk: the D1 head/arm SDK. The wheel ships in this repo under
+#                     tools/func_verify/lib/ — install it into the run env.
 ```
 
-> `capture.py` / `vision.py` 依赖 `pyrealsense2` 和 `beingbeyond_d1_sdk`，
-> 这两个都**不在本仓库**，只能在真机环境跑；纯训练机上跳过第 0 步、直接从已有图片开始即可。
+> `capture.py` / `vision.py` depend on `pyrealsense2` and `beingbeyond_d1_sdk`, so
+> they only run on the real robot. On a training-only machine, skip step 0 and
+> start from images you already have.
 
-## 完整流程
+## Full pipeline
 
-### 0. 采集图片（真机，可选）
+### 0. Capture images (on the robot, optional)
 
-在机器人上跑采集工具：实时预览相机 + 当前模型检测效果，按 `空格` 存图。
+Run the capture tool on the robot: live camera preview plus the current model's
+detections, `Space` to save a frame.
 
 ```bash
 conda activate bb_d1
-python tools/yolo_train/capture.py                 # 相机 + 头部 + 检测预览
-python tools/yolo_train/capture.py --no-head       # 无机械臂，仅相机采集
-python tools/yolo_train/capture.py --model runs/train/weights/best.pt  # 指定模型
+python tools/yolo_train/capture.py                 # camera + head + detection preview
+python tools/yolo_train/capture.py --no-head       # camera only, no arm
+python tools/yolo_train/capture.py --model runs/train/weights/best.pt  # pick a model
 ```
 
-键盘：`A/D` 头部左右、`W/S` 头部上下、`H` 回标定头位（yaw=-10°/pitch=35°）、
-`空格` 拍照存到 `dataset/raw/`（自动接续编号，不覆盖）、`Q`/`ESC` 退出。
+Keys: `A/D` pan the head, `W/S` tilt it, `H` return to the calibration head pose
+(yaw=-10° / pitch=35°), `Space` save a frame into `dataset/raw/` (auto-incrementing,
+never overwrites), `Q`/`ESC` quit.
 
-存图直接落到 `dataset/raw/`，即下一步的输入。已有图片数据集可跳过这步。
-（若手头已有图片，也可以不经相机，直接把 jpg 拷进 `dataset/raw/`。）
+Frames land straight in `dataset/raw/`, which is the next step's input. Skip this
+step if you already have a dataset — you can also just copy JPEGs into
+`dataset/raw/` without touching a camera.
 
-### 1. 准备标注数据
+### 1. Prepare annotations
 
-用 [LabelMe](https://github.com/wkentaro/labelme) 对方块拍照标注：每张图画**多边形**框住方块，
-`label` 填类别名（须是 `json2label.py::CLASS_NAMES` 之一）。每张 `xxx.jpg` 配一个同名
-`xxx.json`。把它们放到：
+Annotate the cubes with [LabelMe](https://github.com/wkentaro/labelme): draw a
+**polygon** around each cube and set `label` to a class name (it must be one of
+`json2label.py::CLASS_NAMES`). Every `xxx.jpg` needs a matching `xxx.json`. Place
+them in:
 
 ```
 tools/yolo_train/dataset/raw/
@@ -74,62 +86,64 @@ tools/yolo_train/dataset/raw/
 └── ...
 ```
 
-### 2. 转换 + 划分数据集
+### 2. Convert and split
 
 ```bash
 python tools/yolo_train/json2label.py
 ```
 
-会把多边形转成 YOLO-OBB 标签、随机（固定种子 42）按 8:2 划分，生成：
+Converts the polygons to YOLO-OBB labels and splits them 8:2 at random (fixed seed
+42), producing:
 
 ```
 dataset/images/train/  dataset/images/val/
 dataset/labels/train/  dataset/labels/val/
-dataset/labels_preview/     # 标注可视化，翻一眼确认框对不对
+dataset/labels_preview/     # annotation overlays — skim them to check the boxes
 ```
 
-### 3. 核对类别一致
+### 3. Check the classes line up
 
-`json2label.py::CLASS_NAMES` 的**顺序**决定类别索引，必须和 `data.yaml` 的 `names`
-一字不差。默认四类：
+The **order** of `json2label.py::CLASS_NAMES` determines the class indices and must
+match `data.yaml`'s `names` exactly. The four defaults:
 
 ```
 0: red_cube   1: blue_cube   2: green_cube   3: yellow_cube
 ```
 
-改类别时，两个文件一起改，并同步 `data.yaml` 的 `nc`（类别数）。
+When changing classes, edit both files and update `data.yaml`'s `nc` (class count).
 
-### 4. 训练
+### 4. Train
 
 ```bash
 python tools/yolo_train/train.py
 ```
 
-- 首次运行自动下载基座 `yolo11x-obb.pt`（约 56MB）。
-- 关键超参写在 `train.py`：`imgsz=640`、`epochs=1000`、`batch=8`、`device="0"`（第 0 号 GPU）。
-  显存不够就调小 `batch`；多卡用 `device="0,1"`；纯 CPU 用 `device="cpu"`（很慢）。
-- 产物在 `runs/train/weights/`：`best.pt`（最佳）和 `last.pt`（最后一轮）。
+- The first run downloads the base `yolo11x-obb.pt` (~56 MB) automatically.
+- The key hyperparameters live in `train.py`: `imgsz=640`, `epochs=1000`, `batch=8`,
+  `device="0"` (GPU 0). Lower `batch` if you run out of VRAM; use `device="0,1"` for
+  multiple GPUs, or `device="cpu"` (very slow) for none.
+- Artefacts land in `runs/train/weights/`: `best.pt` and `last.pt`.
 
-### 5. 部署到 skill
+### 5. Deploy to the skill
 
-把训练好的权重拷到 skill 的 models 目录，命名 `best.pt`：
+Copy the trained weights into this deployment's `models/` dir as `best.pt`:
 
 ```bash
-cp tools/yolo_train/runs/train/weights/best.pt \
-   skills/vertical_grasp_object_skill/models/best.pt
+cp tools/yolo_train/runs/train/weights/best.pt models/best.pt
 ```
 
-`detect_cubes` 激活时（`on_activate`）就会加载它。模型路径也可用配置
-`model_path` 或环境变量 `BLOCK_GRASP_MODEL` 覆盖（见 skill 的 `config.spec`）。
+The skill loads it on `on_activate`. The path can also be overridden by the
+`model_path` config key or the `BLOCK_GRASP_MODEL` env var (see the skill's
+`config.spec`).
 
-## 快速验证权重
+## Quick weight check
 
-不上机，用 `detect.py` 对单张图跑一遍看检测框：
+Without the robot, run `detect.py` over a single image and look at the boxes:
 
 ```python
 import cv2
-from detect import load_model, detect_objects_in_frame, draw_box
 import numpy as np
+from detect import load_model, detect_objects_in_frame, draw_box
 
 model = load_model("runs/train/weights/best.pt")
 frame = cv2.imread("dataset/images/val/xxx.jpg")
@@ -138,10 +152,15 @@ for (u, v, w, h, r), score, cid, name in detect_objects_in_frame(model, frame, c
 cv2.imwrite("check.jpg", frame)
 ```
 
-## 说明
+## Notes
 
-- **OBB（有向框）而非普通框**：方块可能斜放，有向框的旋转角经
-  `coordinate_utils.estimate_grasp_angle_deg` 变成抓取偏航角（joint-6），斜方块才夹得准。
-- **训练/推理超参对齐**：skill 推理的 `conf`/`iou` 阈值在 `block_grasp.config`
-  （`CONF_THRESHOLD`/`IOU_THRESHOLD`）；训练分辨率 `imgsz=640` 与相机来图差异过大时精度会掉。
-- 只训练方块类别。要检测其他物体走的是 skill 的 VLM 路径（`detect_objects`），不在这里训练。
+- **Oriented boxes, not axis-aligned ones**: cubes can sit at an angle, and the
+  OBB's rotation becomes the grasp yaw (joint 6) through
+  `coordinate_utils.estimate_grasp_angle_deg`. That is what makes a tilted cube
+  grippable.
+- **Keep training and inference aligned**: the skill's inference `conf`/`iou`
+  thresholds live in `block_grasp.config` (`CONF_THRESHOLD` / `IOU_THRESHOLD`).
+  Accuracy drops when the training resolution (`imgsz=640`) is far from what the
+  camera delivers.
+- Only cube classes are trained here. Detecting anything else goes through the
+  skill's VLM path (`detect_objects`), which needs no training.

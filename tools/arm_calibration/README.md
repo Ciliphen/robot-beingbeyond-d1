@@ -1,125 +1,153 @@
-# 机械臂标定
+# Arm calibration
 
-标定 `vertical_grasp_object_skill` 抓取所需的两组参数：
+*[中文版](./README_CN.md)*
 
-1. **手眼标定**（`calibrate_handeye.py`）——相机像素 ↔ 桌面基座坐标的 2D 单应矩阵，
-   产出 `handeye_calib.npz`，就是该 skill `models/handeye_calib.npz` 的来源，被
-   `detector.py` 加载用于把检测到的像素点解析成基座系 XY。
-2. **重力下垂标定**（`calibrate_sag.py`）——机械臂伸远时自身重力导致末端下垂，拟合
-   `dz = factor·dist³` 得到 `GRAVITY_SAG_FACTOR`，填进 `block_grasp.config` 抬高目标点补偿下垂。
+Calibrates the two sets of parameters the `vertical_grasp_object` skill's grasping
+depends on:
 
-从 Beingbeyond_D1 参考仓库 `block_grasp/` 搬来，import/路径已改为自包含（相对本目录）。
+1. **Hand-eye calibration** (`calibrate_handeye.py`) — the 2D homography between
+   camera pixels and table base-frame coordinates. Produces `handeye_calib.npz`,
+   the source of this deployment's `models/handeye_calib.npz`, which the skill's
+   `detector.py` loads to resolve detected pixels into base-frame XY.
+2. **Gravity sag calibration** (`calibrate_sag.py`) — the arm's own weight droops
+   the end effector when extended. Fits `dz = factor·dist³` to get
+   `GRAVITY_SAG_FACTOR`, which goes into `block_grasp.config` so the target point
+   is raised to compensate.
 
-## 目录内容
+Lifted from the Beingbeyond_D1 reference repo's `block_grasp/`, with imports and
+paths rewritten to be self-contained (relative to this directory).
 
-| 文件                     | 作用                                                                                         |
-| ------------------------ | -------------------------------------------------------------------------------------------- |
-| `calibrate_handeye.py` | **手眼标定**：相机预览 + 点图取参考点 + 键盘/拖拽移末端对准 + 记录点对 → 算单应       |
-| `calibrate_sag.py`     | **重力下垂标定**：末端遍历多个径向距离、下降到抓取高度、量高度 → 拟合 sag factor      |
-| `test_click_goto.py`   | **验证（主）**：点图后机械臂末端**实际移动**到点击位置，靠物理对准检验标定准不准 |
-| `test_calib.py`        | **验证（轻量）**：点图上任意像素，只打印解算出的桌面世界坐标，不动机械臂               |
-| `ik_scipy.py`          | SLSQP 数值 IK 求解器（标定脚本移动末端时用；与 skill 运行时同一份）                          |
-| `config.py`            | 标定/抓取常量（头部姿态、EE 姿态、IK 容差等；与 skill 的`block_grasp.config` 对应）        |
-| `../vision.py`         | RealSense 相机封装（依赖`pyrealsense2`）。放在 `tools/`，供各工具共用                    |
-| `handeye_calib.npz`    | 一份示例标定产物，可直接部署或作为格式参考                                                   |
+## Contents
 
-> `handeye_calib.npz` 内含：`H`（3×3 单应）、`plane`（桌面平面 z=ax+by+c）、
-> `head_yaw`/`head_pitch`（标定时头部角，检测时必须复现）、`pixel_pts`/`world_pts`（原始点对）、
-> `mean_err_mm`（标定误差）。
+| File | Purpose |
+| --- | --- |
+| `calibrate_handeye.py` | **hand-eye**: camera preview + click a reference point + move the EE there by keyboard/drag + record the pair → solve the homography |
+| `calibrate_sag.py` | **gravity sag**: step the EE through several radial distances, descend to grasp height, measure → fit the sag factor |
+| `test_click_goto.py` | **verification (primary)**: after a click the EE **actually moves** to that spot, so physical alignment shows whether the calibration is good |
+| `test_calib.py` | **verification (lightweight)**: click any pixel and only print the resolved table world coordinate; the arm does not move |
+| `ik_scipy.py` | the SLSQP numerical IK solver (used when the calibration scripts move the EE; same copy the skill runs) |
+| `config.py` | calibration/grasp constants (head pose, EE pose, IK tolerances…; the counterpart of the skill's `block_grasp.config`) |
+| `../vision.py` | the RealSense wrapper (needs `pyrealsense2`). Kept in `tools/` so every tool shares one copy |
+| `handeye_calib.npz` | a sample calibration artefact — deployable as-is, or useful as a format reference |
 
-## 环境
+> `handeye_calib.npz` contains: `H` (the 3×3 homography), `plane` (the table plane
+> z=ax+by+c), `head_yaw` / `head_pitch` (the head angles at calibration time, which
+> **must be reproduced** at detection time), `pixel_pts` / `world_pts` (the raw
+> pairs), and `mean_err_mm` (the calibration error).
 
-⚠ **真机脚本**：直接开 `/dev/ttyUSB0` 串口、RealSense、CAN 总线（`calibrate_handeye.py` 的灵巧手）、
-cv2 窗口，必须在**接了 D1 机械臂 + RealSense 相机的机器**上跑：
+## Environment
+
+⚠ **These are on-robot scripts**: they open the `/dev/ttyUSB0` serial link, the
+RealSense, the CAN bus (the dexterous hand, in `calibrate_handeye.py`) and cv2
+windows directly, so they must run on the machine with the D1 arm and RealSense
+attached:
 
 ```bash
 conda activate bb_d1
 pip install pyrealsense2 opencv-python numpy scipy
-# beingbeyond_d1_sdk：D1 头部/机械臂/灵巧手 SDK，不在本仓库，需装到运行环境
-#                     （参考仓库 conda 环境 bb_d1 里有）
+# beingbeyond_d1_sdk: the D1 head/arm/hand SDK. The wheel ships in this repo under
+#                     tools/func_verify/lib/ — install it into the run env.
 ```
 
-> `beingbeyond_d1_sdk` 和 `pyrealsense2` 都**不在本仓库**，只能在真机环境跑。
-> `ik_scipy.py` / `config.py` 是同目录兄弟，`vision.py` 在父目录 `tools/`（各工具共用）。
-> 脚本已把本目录和父目录加进 `sys.path`，无需 `PYTHONPATH`。
+> `ik_scipy.py` / `config.py` are siblings in this directory; `vision.py` sits in the
+> parent `tools/` dir (shared by every tool). The scripts already add both to
+> `sys.path`, so no `PYTHONPATH` is needed.
 
-## 完整流程
+## Full pipeline
 
-### 1. 手眼标定（先做）
+### 1. Hand-eye calibration (do this first)
 
 ```bash
 conda activate bb_d1
 python tools/arm_calibration/calibrate_handeye.py
 ```
 
-流程（详见脚本内提示）：
+The flow (the script prints its own prompts):
 
-1. 相机看向桌面，头部固定在标定姿态（默认 yaw=-10°、pitch=35°，头部标定期间**不要动**）
-2. 在画面上**点一个桌面参考点**（绿色十字）
-3. 把末端移到那个物理点——两种方式：
-   - **键盘/IK**：`WASD`=XY、`ZX`=Z、`UO/IK/JL`=RPY
-   - **拖拽示教**：`T` 松开机械臂力矩后用手拖（松力矩前先扶住机械臂！）
-4. `空格` 记录一对（像素, 世界）
-5. 桌面上不同位置重复 **6 次以上**
-6. `C` 计算单应并保存到 `handeye_calib.npz`（XY 误差 < 20mm 才存）
+1. Point the camera at the table and hold the head at the calibration pose
+   (default yaw=-10°, pitch=35° — **do not move the head** during calibration).
+2. **Click one table reference point** in the image (a green cross).
+3. Move the EE to that physical point, either way:
+   - **keyboard / IK**: `WASD` = XY, `ZX` = Z, `UO/IK/JL` = RPY
+   - **drag teaching**: `T` releases the arm's torque so you can move it by hand
+     (support the arm before releasing the torque!)
+4. `Space` records one (pixel, world) pair.
+5. Repeat at **six or more** different spots on the table.
+6. `C` solves the homography and saves `handeye_calib.npz` (only if the XY error is
+   under 20 mm).
 
-其他键：`T` 切换力矩（拖拽模式）、`B` 开合手、`R` 复位末端、`ESC` 退出。
+Other keys: `T` toggle torque (drag mode), `B` open/close the hand, `R` reset the EE,
+`ESC` quit.
 
-### 2. 验证手眼标定
+### 2. Verify the hand-eye calibration
 
-推荐用 `test_click_goto.py`：点图后机械臂末端**实际移动**过去，直接看末端有没有对准点击的物理点，
-这是最真实的验证。
+`test_click_goto.py` is the recommended check: after a click the EE **actually
+moves** there, so you can see directly whether it lines up with the physical point
+you clicked. That is the most honest verification.
 
 ```bash
 python tools/arm_calibration/test_click_goto.py
-python tools/arm_calibration/test_click_goto.py --calib handeye_calib.20260717_095620.npz  # 回溯某份备份
+python tools/arm_calibration/test_click_goto.py --calib handeye_calib.20260717_095620.npz  # replay a backup
 ```
 
-⚠ **急停按钮请保持触手可及**——机械臂会移动到点击位置上方并下降。
+⚠ **Keep the e-stop within reach** — the arm moves above the clicked spot and
+descends.
 
-加载 `handeye_calib.npz`（`--calib` 可指定某份备份回溯验证），把头部摆到标定姿态。左键点桌面上一点，
-末端就移到该点上方 `z_offset`（默认 10cm）处，看指尖 XY 有没有对准。
-键：`Z/X` 升降目标高度、`空格/B` 收紧/放松手、`ESC` 退出。末端明显没对准就重标。
+It loads `handeye_calib.npz` (`--calib` selects a specific backup to replay) and puts
+the head at the calibration pose. Left-click a point on the table and the EE moves to
+`z_offset` (10 cm by default) above it; check whether the fingertip lines up in XY.
+Keys: `Z/X` raise/lower the target height, `Space`/`B` close/open the hand, `ESC`
+quit. Re-calibrate if the EE is visibly off.
 
-也可以用轻量版 `test_calib.py`（不动机械臂，只在终端打印解算的世界坐标 `pixel=(u,v) → world=(x,y)`，
-拿尺子核对），适合快速看数值：
+There is also the lightweight `test_calib.py`, which leaves the arm still and only
+prints the resolved world coordinate (`pixel=(u,v) → world=(x,y)`) for you to check
+with a ruler — handy for eyeballing the numbers:
 
 ```bash
 python tools/arm_calibration/test_calib.py
 python tools/arm_calibration/test_calib.py --calib handeye_calib.20260717_095620.npz
 ```
 
-### 3. 重力下垂标定
+### 3. Gravity sag calibration
 
 ```bash
 python tools/arm_calibration/calibrate_sag.py
-python tools/arm_calibration/calibrate_sag.py --reverse   # 从远到近，与正向对比迟滞（判断机械背隙）
+python tools/arm_calibration/calibrate_sag.py --reverse   # far to near, to compare hysteresis against the forward pass (reveals mechanical backlash)
 ```
 
-⚠ **急停按钮请保持触手可及**——机械臂会下降到接近桌面的抓取高度。
+⚠ **Keep the e-stop within reach** — the arm descends to grasp height, close to the
+table.
 
-脚本让末端在抓取姿态下遍历若干径向距离（`CALIB_X`），每点**关闭下垂补偿**下降到名义抓取高度并停住，
-你用尺子量【同一个末端参考点】到桌面的垂直距离(mm)、回车录入。全部量完自动拟合并打印
-建议的 `GRAVITY_SAG_FACTOR`（附 R²）。
+The script steps the EE through several radial distances (`CALIB_X`) in the grasp
+pose. At each one it descends to the nominal grasp height **with sag compensation
+off** and holds; you measure the vertical distance (mm) from **the same EE reference
+point** to the table and type it in. Once every point is measured it fits the data
+and prints the suggested `GRAVITY_SAG_FACTOR` (with R²).
 
-### 4. 部署到 skill
+### 4. Deploy
 
-- **手眼标定**：把 npz 拷到 skill 的 models 目录：
+- **Hand-eye**: copy the npz into this deployment's `models/` dir:
 
   ```bash
-  cp tools/arm_calibration/handeye_calib.npz \
-     skills/vertical_grasp_object_skill/models/handeye_calib.npz
+  cp tools/arm_calibration/handeye_calib.npz models/handeye_calib.npz
   ```
 
-  路径也可用配置 `calib_path` 或环境变量 `VERTICAL_GRASP_OBJECT_CALIB` 覆盖（见 skill 的 `main.py`）。
-- **重力下垂**：把拟合出的值填进 skill 侧的 `block_grasp.config` 的 `GRAVITY_SAG_FACTOR`
-  （`controller.py` 用 `GRAVITY_SAG_FACTOR * dist³` 抬高目标点）。
+  The path can also be overridden by the `calib_path` config key or the
+  `VERTICAL_GRASP_OBJECT_CALIB` env var (see the skill's `main.py`).
+- **Gravity sag**: put the fitted value into `GRAVITY_SAG_FACTOR` in the skill's
+  `block_grasp.config` (`controller.py` raises the target by
+  `GRAVITY_SAG_FACTOR * dist³`).
 
-## 说明
+## Notes
 
-- **头部姿态必须一致**：手眼标定、验证（`test_click_goto`/`test_calib`）、真机检测三处的头部 yaw/pitch
-  必须相同，否则单应矩阵不成立。默认 yaw=-10°、pitch=35°（`config.py` 的 `HEAD_YAW_DEG`/`HEAD_PITCH_DEG`）。
-- **相机分辨率**：标定用 1280×720（`config.py` 的 `CALIB_CAM_WIDTH/HEIGHT`）；检测端分辨率不同时
-  像素坐标会自动缩放对齐。
-- **下垂模型是径向距离的三次方**：`calibrate_sag.py` 固定 y=0 只沿 x 遍历即可拟合，
-  因为下垂只跟径向距离有关；拟合用的是斜率，量到哪个参考点（指尖/法兰）不影响结果。
+- **The head pose must be identical** across hand-eye calibration, verification
+  (`test_click_goto` / `test_calib`), and live detection — otherwise the homography
+  does not hold. Defaults are yaw=-10°, pitch=35° (`HEAD_YAW_DEG` /
+  `HEAD_PITCH_DEG` in `config.py`).
+- **Camera resolution**: calibration uses 1280×720 (`CALIB_CAM_WIDTH/HEIGHT` in
+  `config.py`). When the detection side runs at a different resolution, pixel
+  coordinates are rescaled automatically.
+- **The sag model is cubic in radial distance**, so `calibrate_sag.py` can fix y=0 and
+  step along x alone: sag depends only on radial distance. The fit uses the slope, so
+  which reference point you measure to (fingertip or flange) does not change the
+  result.

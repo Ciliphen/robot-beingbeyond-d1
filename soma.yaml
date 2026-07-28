@@ -45,13 +45,13 @@ robot:
 tree:
   id: base
   part_type: fixed_base
-  human_label: "固定底座（桌面安装，无移动/导航能力）"
+  human_label: "Fixed base (desk-mounted; no locomotion or navigation)"
   link: link_base
   provided_by: []
   children:
     - id: arm
       part_type: manipulator
-      human_label: "6 自由度机械臂"
+      human_label: "6-DOF arm"
       link: link_base
       manipulator:
         dof: 6
@@ -73,7 +73,7 @@ tree:
       children:
         - id: hand
           part_type: end_effector
-          human_label: "五指灵巧手（Linker，CAN 总线）"
+          human_label: "Five-finger dexterous hand (Linker, CAN bus)"
           link: hand_base_link
           end_effector:
             modality: dexterous_hand
@@ -89,7 +89,7 @@ tree:
             - { contract: robonix/primitive/hand/get_state,   provider_id: d1_hand }
     - id: head
       part_type: pan_tilt
-      human_label: "2 自由度头部云台（偏航 + 俯仰）"
+      human_label: "2-DOF head pan/tilt (yaw + pitch)"
       link: link_head_base
       dof: 2
       joints: [joint_7_head_yaw, joint_8_head_pitch]
@@ -100,7 +100,7 @@ tree:
       children:
         - id: head_camera
           part_type: sensor
-          human_label: "头部 Intel RealSense D435i RGB-D 相机（俯视工作台）"
+          human_label: "Head Intel RealSense D435i RGB-D camera (looks down at the workbench)"
           link: camera
           sensor:
             modality: rgbd
@@ -116,23 +116,23 @@ tree:
             - { contract: robonix/primitive/camera/depth_snapshot, provider_id: d1_camera }
 
 description:
-  summary: "BeingBeyond D1 桌面机器人：固定底座 6 自由度机械臂 + 2 自由度头部云台 + 五指灵巧手 + 头部 RGB-D 相机。当前部署提供“垂直抓取物体”(vertical_grasp_object) 技能：用头部相机检测桌面物体（YOLO 检测积木，或视觉大模型按自然语言开放词汇检测任意物体），并按坐标抓取 / 放置物体（可选传入抓取角度与手爪开合大小）。"
+  summary: "BeingBeyond D1 desktop robot: a fixed-base 6-DOF arm + a 2-DOF head pan/tilt + a five-finger dexterous hand + a head RGB-D camera. This deployment provides the vertical_grasp_object skill: detect objects on the table with the head camera (YOLO for cubes, or a VLM for open-vocabulary detection of anything from a natural-language description) and pick / place them by coordinate, with an optional grasp angle and gripper aperture."
   can_do:
-    - "用头部相机 + 视觉大模型（VLM）按自然语言描述开放词汇检测任意桌面物体（颜色/形状/文字/相对位置），返回其 base 系位置与抓取角度（detect_objects）；这是首选检测工具，问“桌上有什么/看到什么”或按描述找物体（含积木）都用它，不局限于 YOLO 类别；无深度、抓取高度按桌面平面假定。"
-    - "（兜底）用头部 RGB-D 相机 + YOLO-OBB 检测桌面积木，报告每个积木的 base 系位置（detect_cubes）；仅当 detect_objects 失败或未配置 VLM 时用作退路。"
-    - "把机械臂移到指定位置抓起物体并夹住，可选指定抓取角度（手腕绕竖直方向旋转）与手爪开合大小（pick_cube）。"
-    - "把夹住的物体移到指定位置放下，可选指定角度与开合大小（place_cube）。"
-    - "把一个颜色的积木叠到另一个颜色的积木上（stack_cubes）；给两个颜色，一次调用完成检测+抓取+放置，用于“把红色积木叠到绿色积木上”这类堆叠指令。"
-    - "把一个颜色的方块放进固定的盒子/盘子里（put_cube_in_container）；给一个颜色，一次调用完成检测+抓取+放置到固定容器位置，用于“把红色方块放到盒子里”这类指令。"
-    - "把桌面上所有方块按颜色分拣到各自固定位置（sort_cubes）；一次调用完成全部检测+逐个抓放，用于“把方块按颜色分类/整理好”这类指令。"
-    - "放置并复位后用 VLM 复核物体是否被移动到了目标位置（verify_grasp，mode=place）；抓取与放置之间不做验证。失败可重新检测再执行整个抓放。"
-    - "通过头部 RGB-D 相机俯视观察桌面。"
-    - "让灵巧手“跳舞”：所有手指按节奏开合摆动指定时长，结束后回到张开位（hand_gesture 技能的 gesture_dance）；纯手部动作，不动机械臂、不用相机。"
+    - "Detect ANY object on the table from a natural-language description (colour / shape / text / relative position) using the head camera + a VLM, returning its base-frame position and grasp angle (detect_objects). This is the PREFERRED detection tool: use it both for 'what is on the table / what do you see' and for finding an object by description (cubes included) — it is not limited to the YOLO classes. It has no depth, so the grasp height is assumed to be the table plane."
+    - "(fallback) Detect cubes on the table with the head RGB-D camera + YOLO-OBB, reporting each cube's base-frame position (detect_cubes). Use this only when detect_objects fails or no VLM is configured."
+    - "Move the arm to a given position, grasp an object and keep holding it, with an optional grasp angle (wrist rotation about the vertical axis) and gripper aperture (pick_cube)."
+    - "Move a held object to a given position and release it, with an optional angle and aperture (place_cube)."
+    - "Stack a cube of one colour on top of a cube of another colour (stack_cubes). Give it two colours and one call does detect + pick + place — use it for stacking requests like 'stack the red cube on the green one'."
+    - "Put a cube of a given colour into the fixed box / plate (put_cube_in_container). Give it one colour and one call does detect + pick + place at the fixed container spot — use it for requests like 'put the red cube in the box'."
+    - "Sort every cube on the table into its colour's fixed spot (sort_cubes). One call detects them all and picks/places each in turn — use it for requests like 'sort the cubes by colour' or 'tidy up the cubes'."
+    - "After placing and parking, re-check with the VLM whether the object actually ended up at the target position (verify_grasp, mode=place). Nothing is verified between the pick and the place. On failure, re-detect and redo the whole pick-and-place."
+    - "Look down at the table through the head RGB-D camera."
+    - "Make the dexterous hand 'dance': every finger wiggles open/closed rhythmically for a requested duration, then the hand returns to open (gesture_dance, from the hand_gesture skill). Hand only — it moves no arm and uses no camera."
   cannot_do:
-    - "移动底盘或导航——D1 是固定底座，没有轮子/底盘。"
-    - "从头部相机以外的视角观察（无腕部相机、无其它视角传感器）。"
-    - "抓取超出机械臂工作范围的物体。"
+    - "Drive a chassis or navigate — the D1 is fixed-base, with no wheels or chassis."
+    - "Look from any viewpoint other than the head camera (there is no wrist camera and no other viewpoint sensor)."
+    - "Grasp objects outside the arm's reach."
   notes:
-    - "Soma v2 只把本文件和引用的 URDF 作为原始文本服务；primitive/skill 的启动由 robonix_manifest.yaml 驱动。"
-    - "机体部件由 d1_arm / d1_hand / d1_camera 三个原语提供（见 manifest 的 primitive 列表与各部件 provided_by）；均为直连 SDK + gRPC，无 ROS 后端，故状态读取用 get_state rpc 而非 topic_out 流。"
-    - "检测 / 抓取能力来自“垂直抓取物体”(vertical_grasp_object) 技能（运行时经 atlas 注册，提供 detect_objects / detect_cubes / pick_cube / place_cube / verify_grasp / stack_cubes / put_cube_in_container / sort_cubes），它作为消费者调用上述原语,不在本文件的机体树中声明。detect_objects 与 verify_grasp 依赖外部 VLM 接口（部署经 VLM_BASE_URL/VLM_API_KEY/VLM_MODEL 环境变量或技能配置提供）；未配置时这两个工具不可用，其余工具不受影响。推荐闭环：detect_objects 拿坐标+角度 → pick_cube → place_cube（放完自动复位让开）→ verify_grasp(place) 复核一次，验证失败则重新检测再执行整个抓放；抓取与放置之间不验证。"
+    - "Soma v2 serves only this file and the URDF it references, as raw text. Starting the primitives and skills is driven by robonix_manifest.yaml."
+    - "The body parts are served by three primitives — d1_arm / d1_hand / d1_camera (see the manifest's primitive list and each part's provided_by). All of them talk to the SDK directly over gRPC with no ROS backend, so state is read through the get_state rpc rather than a topic_out stream."
+    - "Detection and manipulation come from the vertical_grasp_object skill (registered through atlas at runtime, serving detect_objects / detect_cubes / pick_cube / place_cube / verify_grasp / stack_cubes / put_cube_in_container / sort_cubes). It is a consumer of the primitives above and is not declared in this file's body tree. detect_objects and verify_grasp depend on an external VLM endpoint (supplied by the deployment through the VLM_BASE_URL / VLM_API_KEY / VLM_MODEL env vars or the skill config); without it those two tools are unavailable while the rest keep working. Recommended loop: detect_objects for the position and angle → pick_cube → place_cube (which parks out of the way afterwards) → verify_grasp(place) once. If verification fails, re-detect and redo the whole pick-and-place. Nothing is verified between the pick and the place."

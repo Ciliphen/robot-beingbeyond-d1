@@ -1,160 +1,194 @@
 # robot-beingbeyond-d1
 
-`robonix.robot.beingbeyond.d1` — BeingBeyond D1 桌面机器人的 robonix 整机部署仓：
-固定底座 6 自由度机械臂 + 2 自由度头部云台 + 五指灵巧手 + 头部 RGB-D 相机。
+*[中文版](./README_CN.md)*
 
-核心是**灵巧手物体抓放技能**（`vertical_grasp_object`，8 个 MCP 工具），另带一个
-`hand_gesture` 手势技能。由 `rbnx chat`（文字）或语音链路经 pilot 触发。
+`robonix.robot.beingbeyond.d1` — Robonix whole-robot deployment for the BeingBeyond
+D1 desktop robot: a fixed-base 6-DOF arm, a 2-DOF head pan/tilt, a five-finger
+dexterous hand, and a head RGB-D camera.
 
-<img src="./assets/robot.jpg" alt="BeingBeyond D1 桌面机器人" width="560">
+The centrepiece is the **object pick-and-place skill** (`vertical_grasp_object`,
+8 MCP tools), plus a `hand_gesture` skill. Both are driven through pilot, either
+from `rbnx chat` (text) or over the voice pipeline.
 
-## 能力
+<img src="./assets/robot.jpg" alt="BeingBeyond D1 desktop robot" width="560">
 
-| 工具 | 作用 |
+## Capabilities
+
+| Tool | What it does |
 |---|---|
-| `detect_objects(instruction)` | VLM 开放词表检测任意物体（颜色/形状/文字/空间描述），返回 base 系抓取点 + 抓取角。**通用首选** |
-| `detect_cubes(class_filter)` | YOLO-OBB 检测桌面方块（红/蓝/绿/黄），同 schema。**方块首选**，也作 VLM 未配置时的退路 |
-| `pick_cube(position, angle_deg, gripper)` | 移到位置，按角度/夹紧度抓起并夹住 |
-| `place_cube(position, angle_deg, gripper)` | 移到位置松开放下；`z` 决定堆叠高度，成功后自动泊车让开视野 |
-| `stack_cubes(top_color, base_color, gripper)` | 单次调用完成"A 叠到 B 上"：检测→抓→放。**堆叠首选** |
-| `put_cube_in_container(color, gripper)` | 单次调用把指定颜色方块放进固定容器位 |
-| `sort_cubes(gripper)` | 单次调用把桌面所有方块按颜色分拣到各自固定位 |
-| `verify_grasp(instruction, mode, position)` | VLM 复检抓/放是否到位，闭环重试的依据 |
-| `gesture_dance(duration_s)` | 让灵巧手跳舞（手指开合摆动），结束后回到张开位 |
+| `detect_objects(instruction)` | Open-vocabulary VLM detection from a natural-language description (colour / shape / text / spatial relation). Returns a base-frame grasp point and grasp yaw. **Preferred in general** |
+| `detect_cubes(class_filter)` | YOLO-OBB detection of coloured cubes (red/blue/green/yellow), same schema. **Preferred for cubes**, and the fallback when no VLM is configured |
+| `pick_cube(position, angle_deg, gripper)` | Move to a position, grasp at the given yaw / tightness, keep holding |
+| `place_cube(position, angle_deg, gripper)` | Move to a position and release; `z` sets the stacking height. Parks out of the camera's view on success |
+| `stack_cubes(top_color, base_color, gripper)` | One call for "stack A on B": detect → pick → place. **Preferred for stacking** |
+| `put_cube_in_container(color, gripper)` | One call to drop a cube of the given colour into the fixed container spot |
+| `sort_cubes(gripper)` | One call to sort every cube on the table into its colour's fixed spot |
+| `verify_grasp(instruction, mode, position)` | VLM re-check of whether a pick / place landed — the basis for closed-loop retries |
+| `gesture_dance(duration_s)` | Make the dexterous hand dance, then leave it open |
 
-`position` 为 base 坐标系（米）的 `"x,y"` / `"x,y,z"`，或命名位置（如 `中间`）；半角/全角逗号均可。
-检测几何走手眼标定单应 + 透视校正，深度为固定桌面 Z（两个检测器都不用 RealSense 深度流）。
+`position` is base-frame metres as `"x,y"` / `"x,y,z"`, or a named location. Both
+ASCII and full-width commas are accepted. Detection geometry runs through the
+hand-eye homography plus a perspective correction; depth is the fixed table Z
+(neither detector uses the RealSense depth stream).
 
-## 平台与硬件盘点
+## Platform and hardware inventory
 
-**计算平台**：x86_64，Windows 11 宿主上的 WSL2 / Ubuntu 22.04，native（非容器）。
-**无 ROS 2**——所有原语直连厂商 SDK 并以 gRPC 提供能力，因此不提供任何 `topic_out` 流式契约。
-Python 3.10（conda env `bb_d1_robonix`）。本部署验证所用 Robonix commit：
-`8c0baca2e9f95c334b9ef078419c7bd20739bac7`（2026-07-20）。
+**Compute platform**: x86_64, WSL2 / Ubuntu 22.04 on a Windows 11 host, native
+(not containerised). **No ROS 2** — every primitive talks to the vendor SDK
+directly and serves its capabilities over gRPC, so no `topic_out` streaming
+contracts are provided. Python 3.10 (conda env `bb_d1_robonix`). Verified against
+Robonix commit `8c0baca2e9f95c334b9ef078419c7bd20739bac7` (2026-07-20).
 
-**硬件与连接**：
+**Hardware and connections**:
 
-| 设备 | 型号 | 连接 |
+| Device | Model | Connection |
 |---|---|---|
-| 机械臂 + 头部云台 | BeingBeyond D1（6 + 2 DOF） | 串口 `/dev/ttyUSB0` @ 1000000（**臂与头共用这一个口**） |
-| 灵巧手 | Linker 五指六轴 | CAN `can0` @ 1000000 |
-| 头部相机 | Intel RealSense D435i | USB 3.0，1280x720@30 |
-| 麦克风 / 扬声器 | Windows 宿主设备 | 经 WSLg 的 PulseAudio `pulse` 设备 |
+| Arm + head pan/tilt | BeingBeyond D1 (6 + 2 DOF) | serial `/dev/ttyUSB0` @ 1000000 (**arm and head share this one port**) |
+| Dexterous hand | Linker five-finger, six-axis | CAN `can0` @ 1000000 |
+| Head camera | Intel RealSense D435i | USB 3.0, 1280x720@30 |
+| Mic / speaker | Windows host devices | via WSLg's PulseAudio `pulse` device |
 
-**坐标系**：整机只维护一棵 URDF（`urdf/robot_right_hand.urdf`），根 link 为 `link_base`，
-臂链与头部链均由它分支，相机 frame 为 `camera`；所有固定变换都在这棵树里。
-固定底座部署、无 ROS 2，故**没有 TF 发布方**——像素→base 的变换由技能内的手眼标定单应完成，
-标定文件 `handeye_calib.npz` 是这条链路的唯一真值来源。
+**Frames**: one whole-robot URDF (`urdf/robot_right_hand.urdf`), root link
+`link_base`, with the arm chain and the head chain branching off it and the camera
+frame named `camera`; every fixed transform lives in that tree. Fixed-base
+deployment with no ROS 2, so there is **no TF publisher** — the pixel→base
+transform is done by the hand-eye homography inside the skill, and
+`handeye_calib.npz` is the single source of truth for that chain.
 
-**安全边界**：
+**Safety boundaries**:
 
-- **无软件急停接口**。只能靠硬件断电 / 物理急停。首次运动前必须验证硬件急停可独立停住臂与手。
-- 关节限位由控制器固件与 URDF 约束；`move_pose` 仅在 IK 收敛且位置误差 ≤ `ik_pos_tol`（默认 0.05 m）时下发，否则报错不动作。
-- 总线权限：串口需 `chmod 666 /dev/ttyUSB0` 或加入 `dialout` 组；CAN 由 DexHand 在 init 阶段拉起（非 root 时需预先拉起接口或导出 `PREFLIGHT_SUDO_PASS`）。
-- 看门狗：任何提供方在输入超时、进程退出或收到 `CMD_SHUTDOWN` 时停止硬件输出并释放串口。
-- `pick_z` 设过低会让手指压到桌面；灵巧手首次开合建议先用 `set_joint_torque_limits` 降低力矩上限。技能不做碰撞检查。
-- `soma.yaml` 的 footprint 只是底座安装轮廓（0.20 m 方形），**不是可行驶区域**；机械臂动态包络不在静态 footprint 内。
+- **There is no software e-stop.** Only hardware power-off / a physical e-stop.
+  Verify the hardware e-stop independently halts arm and hand before any motion.
+- Joint limits come from the controller firmware and the URDF. `move_pose` only
+  commands a pose when IK converges within `ik_pos_tol` (default 0.05 m),
+  otherwise it errors without moving.
+- Bus permissions: serial needs `chmod 666 /dev/ttyUSB0` or `dialout` membership;
+  CAN is brought up by DexHand at init (when not root, bring the interface up
+  beforehand or export `PREFLIGHT_SUDO_PASS`).
+- Watchdog: every provider stops hardware output and releases the serial link on
+  input timeout, process exit, or `CMD_SHUTDOWN`.
+- A `pick_z` set too low presses the fingers into the table. For the hand's first
+  open/close, lower the torque ceiling with `set_joint_torque_limits`. The skill
+  does no collision checking.
+- The footprint in `soma.yaml` is the base mounting outline only (0.20 m square),
+  **not a drivable area**; the arm's dynamic envelope is not in a static footprint.
 
-## 部署构成
+## Deployment composition
 
-| 类型 | 实例名 | 包 | 来源 |
+| Kind | Instance | Package | Source |
 |---|---|---|---|
 | primitive | `d1_arm` | `robonix.primitive.beingbeyond.d1.arm` | [primitive-beingbeyond-d1-arm-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-arm-rbnx) |
 | primitive | `d1_hand` | `robonix.primitive.beingbeyond.d1.hand` | [primitive-beingbeyond-d1-hand-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-hand-rbnx) |
 | primitive | `d1_camera` | `robonix.primitive.beingbeyond.d1.camera` | [primitive-beingbeyond-d1-camera-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-camera-rbnx) |
 | primitive | `audio_driver` | `robonix.primitive.audio.alsa` | [primitive-audio-driver-rbnx](https://github.com/syswonder/primitive-audio-driver-rbnx) |
-| service | `speech` | — | `${ROBONIX_SOURCE_PATH}/services/speech`（robonix 内置） |
+| service | `speech` | — | `${ROBONIX_SOURCE_PATH}/services/speech` (built into robonix) |
 | skill | `vertical_grasp_object` | `robonix.skill.vertical_grasp_object` | [skill-vertical-grasp-object-rbnx](https://github.com/Ciliphen/skill-vertical-grasp-object-rbnx) |
 | skill | `hand_gesture` | `robonix.skill.hand_gesture` | [skill-hand-gesture-rbnx](https://github.com/Ciliphen/skill-hand-gesture-rbnx) |
 
-本仓只做**组装与本体专属配置**：清单、soma/urdf、离线工具与检测资产。所有驱动与技能都在
-各自的独立仓库，由清单的 `url:` + `branch:` 拉取到 `rbnx-boot/cache/<repo-name>/`。
-包的能力表、配置字段与安全说明见各包自己的 README。
+This repo does **assembly and robot-specific config only**: the manifest,
+soma/urdf, offline tools, and the detection assets. Every driver and skill lives
+in its own repository and is fetched by the manifest's `url:` + `branch:` into
+`rbnx-boot/cache/<repo-name>/`. Each package's capability table, config fields,
+and safety notes are in its own README.
 
-改包代码的流程因此变成：在包仓改 → push → 本仓 `rbnx clean -f robonix_manifest.yaml --cache`
-→ 重新 `rbnx build`。
+Changing package code therefore means: edit in the package repo → push → here run
+`rbnx clean -f robonix_manifest.yaml --cache` → `rbnx build` again.
 
-## 结构
+## Layout
 
 ```
 robot-beingbeyond-d1/
-├── robonix_manifest.yaml   # 部署清单：系统服务 + 语音 + 4 原语 + speech + 2 技能
-├── soma.yaml               # D1 body model（urdf.path → ./urdf/）
-├── .env.example            # VLM + 腾讯云 TTS 凭据模板（copy 为 .env）
-├── assets/                 # robot.jpg（catalog 预览图）+ bb_d1.png（原图）
+├── robonix_manifest.yaml   # deployment manifest: system components + voice + 4 primitives + speech + 2 skills
+├── soma.yaml               # D1 body model (urdf.path → ./urdf/)
+├── .env.example            # VLM + Tencent Cloud TTS credential template (copy to .env)
+├── assets/                 # robot.jpg (catalog preview) + bb_d1.png (source image)
+├── models/                 # detection assets: best.pt + handeye_calib.npz (robot-specific, git-ignored)
 ├── urdf/
-│   ├── robot_right_hand.urdf   # 整机 URDF（供 soma / IK 用），根 link = link_base
-│   └── meshes/                 # URDF 引用的 STL（含 right_hand/）
-├── models/                 # 检测资产：best.pt + handeye_calib.npz（本机专属，git-ignored）
-└── tools/                  # 离线工具（不参与部署）
-    ├── func_verify/        # D1 SDK 功能自检示例（独立 env bb_d1_rbnx，见其 README）
-    ├── yolo_train/         # 方块检测数据标注+训练链路，产物 best.pt 拷进 skill models/
-    ├── arm_calibration/    # 手眼标定 / 下垂补偿，产物 handeye_calib.npz
-    └── vision.py           # RealSense 采集辅助
+│   ├── robot_right_hand.urdf   # whole-robot URDF (for soma / IK), root link = link_base
+│   └── meshes/                 # STLs referenced by the URDF (incl. right_hand/)
+└── tools/                  # offline tools, not part of the deployment
+    ├── func_verify/        # D1 SDK self-check samples (separate env bb_d1_rbnx, see its README)
+    ├── yolo_train/         # cube-detection labelling + training chain; copy best.pt into models/
+    ├── arm_calibration/    # hand-eye calibration / sag compensation; produces handeye_calib.npz
+    └── vision.py           # RealSense capture helper
 ```
 
-每个包的能力表、配置字段与安全说明见各包 `README.md`；调用语义见技能包的 `CAPABILITY.md`；
-配置字段的类型/单位/默认值/失败条件见各包 `config.spec`。
+The skills are pure robonix **consumers**: `on_activate` discovers the primitives
+through atlas and drives them over their gRPC contracts; they never open the
+serial link / CAN bus / RealSense themselves. IK/FK, YOLO, and the hand-eye
+projection are local pure compute.
 
-技能是纯 robonix **消费者**：`on_activate` 经 atlas 发现并连接原语，通过其 gRPC 契约驱动；
-自身不开串口/CAN/RealSense。IK/FK、YOLO、手眼投影均本地纯计算（`object_detect` +
-`block_grasp` 已随技能包提供，FK/IK 来自 `beingbeyond_d1_sdk` wheel）。
+## Voice
 
-## 语音
+`rbnx boot` brings up the voice pipeline: `audio_driver` (under WSLg the mic and
+speaker go through the PulseAudio `pulse` device — WSLg has no real sound card, so
+`arecord -l` is empty and the device MUST be set explicitly to `pulse`) plus the
+`speech` service.
 
-`rbnx boot` 会拉起语音链路：`audio_driver`（WSLg 下麦克风/扬声器走 PulseAudio `pulse` 设备，
-WSLg 无真实声卡故 `arecord -l` 为空，设备必须显式设为 `pulse`）+ `speech` 服务。
+- **ASR**: the `custom` backend forwards 16k/mono/pcm_s16le to an **external**
+  PaddleSpeech streaming WebSocket (`PADDLE_ASR_PORT=8090`; leaving the host unset
+  resolves to the WSL gateway = the Windows host, so a WSL restart changing the IP
+  does not matter).
+- **TTS**: Tencent Cloud TextToVoice (`voice_type=1001`, the basic zhiyu voice),
+  returning 16 kHz mono pcm_s16le that the speaker primitive plays directly.
+  Export `TENCENTCLOUD_SECRET_ID` / `_SECRET_KEY` in the operator shell.
 
-- **ASR**：`custom` 后端，把 16k/mono/pcm_s16le 转发到**外部** PaddleSpeech 流式 WebSocket
-  （`PADDLE_ASR_PORT=8090`；host 缺省解析到 WSL 网关 = Windows 宿主，故 WSL 重启换 IP 也不受影响）。
-- **TTS**：腾讯云 TextToVoice（`voice_type=1001` 智宇基础音），返回 16 kHz mono pcm_s16le
-  直接交扬声器原语播放。凭据 `TENCENTCLOUD_SECRET_ID` / `_SECRET_KEY` 由操作者 shell 导出。
+Picking the `custom` backend also keeps `rbnx build` from pulling in
+Torch/CUDA/FunASR/Whisper.
 
-选 `custom` 后端同时避免了 `rbnx build` 去拉 Torch/CUDA/FunASR/Whisper。
+## Deploy and run
 
-## 部署与启动
-
-前置：Python 3.10 环境 `bb_d1_robonix`（`ultralytics` + robonix/mcp 依赖，外加
-`pip install tools/func_verify/lib/beingbeyond_d1_sdk-0.2.0-cp310-*.whl` —— 本仓自带该
-wheel，`cp310` + `manylinux_2_17_x86_64`，故环境必须是 Python 3.10/x86_64），
-`d1_arm`/`d1_hand`/`d1_camera` 硬件就绪且总线权限已配，YOLO 权重与手眼标定放在
-`./models/`（`best.pt` + `handeye_calib.npz`，见该目录 README），并确认清单 `env:` 里的
-`D1_DEPLOY_DIR` 指向本仓的实际路径。
-如需语音，先起外部 PaddleSpeech ASR 服务。
+Prerequisites: a Python 3.10 env `bb_d1_robonix` (`ultralytics` + the robonix/mcp
+deps, plus
+`pip install tools/func_verify/lib/beingbeyond_d1_sdk-0.2.0-cp310-*.whl` — the
+wheel ships in this repo and is `cp310` + `manylinux_2_17_x86_64`, so the env has
+to be Python 3.10 / x86_64); the `d1_arm` / `d1_hand` / `d1_camera` hardware
+connected with bus permissions in place; the YOLO weights and hand-eye calibration
+in `./models/` (`best.pt` + `handeye_calib.npz`, see that dir's README), and
+`D1_DEPLOY_DIR` in the manifest's `env:` pointing at this repo's real path. For
+voice, start the external PaddleSpeech ASR service first.
 
 ```bash
-cp .env.example .env && $EDITOR .env    # VLM 端点 + 腾讯云 TTS 凭据
-set -a && . ./.env && set +a            # 导出到当前 shell（清单按 ${VAR} 展开）
-rbnx setup "$PWD"                       # 登记 ${ROBONIX_SOURCE_PATH}
-rbnx build -f robonix_manifest.yaml     # 各包 codegen（技能用 --mcp）
-rbnx boot -v -f robonix_manifest.yaml   # 前台运行，日志写 rbnx-boot/logs/
+cp .env.example .env && $EDITOR .env    # VLM endpoint + Tencent Cloud TTS credentials
+set -a && . ./.env && set +a            # export into the shell (the manifest expands ${VAR})
+rbnx setup "$PWD"                       # register ${ROBONIX_SOURCE_PATH}
+rbnx build -f robonix_manifest.yaml     # fetch the url: packages, then codegen each (--mcp for skills)
+rbnx boot -v -f robonix_manifest.yaml   # foreground; logs go to rbnx-boot/logs/
 ```
 
-另一终端验收：
+Acceptance, from a second terminal:
 
 ```bash
-rbnx caps -v          # 4 原语 + speech 为 ACTIVE；2 个技能为 INACTIVE（预期）
+rbnx caps -v          # 4 primitives + speech ACTIVE; the 2 skills INACTIVE (expected)
 rbnx logs -d ./rbnx-boot/logs -l warn
-rbnx chat             # 例："把红色方块叠到蓝色方块上" / "把方块按颜色分类"
+rbnx chat             # e.g. "stack the red cube on the blue one" / "sort the cubes by colour"
 rbnx shutdown -f robonix_manifest.yaml
 ```
 
-技能类包停在 `INACTIVE` 是规范行为——首次 MCP 调用由 executor 触发 `CMD_ACTIVATE`。
-`rbnx build` 摘要应为 `Failed: 0` / `Skipped: 0`，且 `Built` 等于清单实例数（7）。
+Skill-kind packages staying `INACTIVE` is per spec — the executor fires
+`CMD_ACTIVATE` on the first MCP call. The `rbnx build` summary should read
+`Failed: 0` / `Skipped: 0` with `Built` equal to the manifest's instance count (7).
 
-**首次上机不要从运动开始**：先只跑只读功能（`d1_camera` 快照、`arm/get_state`、
-`detect_objects` / `detect_cubes`），核对返回坐标合理、时间戳与坐标系正确，
-再逐个加回运动实例验证单关节、手指开合与急停。
+**Do not start from motion on a new robot**: run the read-only paths first
+(`d1_camera` snapshot, `arm/get_state`, `detect_objects` / `detect_cubes`), confirm
+the returned coordinates, timestamps, and frames look right, then add the motion
+instances back one at a time to verify single joints, finger open/close, and the
+e-stop.
 
-## 说明
+## Notes
 
-- 抓取高度 `pick_z`、堆叠高度 `block_height`、`table_z_offset`、检测资产路径、VLM 端点、
-  `grasp_feedback` 等在 `robonix_manifest.yaml` 的 skill `config:` 中调整。
-- `detect_objects` / `verify_grasp` 需要 OpenAI 兼容的 VLM 端点（`VLM_BASE_URL` /
-  `VLM_API_KEY` / `VLM_MODEL`）；未配置时这两个工具不可用，其余六个不受影响。
-- 手眼标定与相机安装位置、桌面高度绑定；头部相机重装或桌面高度变化后必须重新标定。
-- `tools/` 下为离线工具，不参与 `rbnx boot`；`tools/func_verify/` 用独立环境 `bb_d1_rbnx`
-  直连 SDK 做硬件自检，与部署环境 `bb_d1_robonix` 相互独立。
+- Grasp height `pick_z`, cube height `block_height`, `table_z_offset`, asset paths,
+  the VLM endpoint, `grasp_feedback` and friends are tuned in the skill's `config:`
+  block in `robonix_manifest.yaml`. Field semantics live in each package's
+  `config.spec`; call semantics in the skills' `CAPABILITY.md`.
+- `detect_objects` / `verify_grasp` need an OpenAI-compatible VLM endpoint
+  (`VLM_BASE_URL` / `VLM_API_KEY` / `VLM_MODEL`). Without it those two tools are
+  unavailable and the other six keep working.
+- The hand-eye calibration is tied to the camera mount and the table height —
+  re-calibrate if the head camera is remounted or the table height changes.
+- Everything under `tools/` is offline and takes no part in `rbnx boot`.
+  `tools/func_verify/` uses its own env `bb_d1_rbnx` to talk to the SDK directly
+  for hardware self-checks, independent of the `bb_d1_robonix` deployment env.
 
 ## License
 
