@@ -1,0 +1,19 @@
+# Robonix codegen + build output
+rbnx-build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Detection assets — large / robot-specific, never committed.
+# Provide these locally; see models/README.md.
+models/*.pt
+models/*.npz
+
+# Detector debug dumps (detect_debug: true)
+debug/

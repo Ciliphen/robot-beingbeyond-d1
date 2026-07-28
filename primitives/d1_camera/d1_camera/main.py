@@ -10,8 +10,8 @@ rpc/MCP snapshot contracts (not the rgb/depth/intrinsics topic_out streams):
   robonix/primitive/camera/depth_snapshot  rpc (MCP)  one depth frame, normalized JPEG
   robonix/primitive/camera/driver          rpc        lifecycle (wired to on_init)
 
-Wraps vision.RealSenseCamera (pyrealsense2) from this repo's tools/ dir.
-Resolution / frame come from primitive config or D1_CAMERA_* env vars.
+Wraps d1_camera.vision.RealSenseCamera (pyrealsense2), vendored into this
+package. Resolution / frame come from primitive config or D1_CAMERA_* env vars.
 """
 from __future__ import annotations
 
@@ -162,8 +162,8 @@ def init(cfg):
         from d1_camera.vision import RealSenseCamera
     except Exception as exc:  # noqa: BLE001
         return Err(
-            "import RealSenseCamera failed — vision.py not vendored into the "
-            f"package (run scripts/build.sh): {exc}"
+            "import RealSenseCamera failed — check pyrealsense2 is installed in "
+            f"this package's Python env: {exc}"
         )
 
     try:

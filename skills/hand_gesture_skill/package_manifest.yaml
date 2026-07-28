@@ -1,11 +1,10 @@
 manifestVersion: 1
 
 package:
-  name: com.beingbeyond.skill.hand_gesture
+  name: robonix.skill.hand_gesture
   version: 0.1.0
-  vendor: beingbeyond
   description: Make the D1 dexterous hand perform a finger "dance" — a rhythmic open/close wiggle across all fingers for a given duration. A single MCP tool for the D1 hand.
-  tags: [skill, gesture, dance, beingbeyond-d1]
+  tags: [skill, gesture, dance, hand, beingbeyond, d1]
   maintainers:
     - Felix <xi.lifeng@qq.com>
   license: MulanPSL-2.0

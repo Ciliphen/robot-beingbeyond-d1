@@ -1,11 +1,10 @@
 manifestVersion: 1
 
 package:
-  name: com.beingbeyond.skill.vertical_grasp_object
+  name: robonix.skill.vertical_grasp_object
   version: 0.1.0
-  vendor: beingbeyond
   description: Detect objects on the table (YOLO cubes, or open-vocabulary via a VLM), then grasp and place them (with optional grasp angle and gripper aperture) — MCP tools for the D1 dexterous hand.
-  tags: [skill, grasp, manipulation, beingbeyond-d1]
+  tags: [skill, grasp, pick, place, manipulation, beingbeyond, d1]
   maintainers:
     - Felix <xi.lifeng@qq.com>
   license: MulanPSL-2.0

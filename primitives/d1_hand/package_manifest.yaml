@@ -2,10 +2,12 @@
 manifestVersion: 1
 
 package:
-  name: com.beingbeyond.primitive.d1_hand
+  name: robonix.primitive.beingbeyond.d1.hand
   version: 0.1.0
-  vendor: beingbeyond
   description: D1 dexterous-hand primitive — axis-level position control + speed/torque limits over CAN.
+  tags: [primitive, hand, gripper, dexterous, beingbeyond, d1]
+  maintainers:
+    - Felix <xi.lifeng@qq.com>
   license: MulanPSL-2.0
 
 build: bash scripts/build.sh

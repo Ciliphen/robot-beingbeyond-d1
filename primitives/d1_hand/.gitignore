@@ -1,0 +1,11 @@
+# Robonix codegen + build output
+rbnx-build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

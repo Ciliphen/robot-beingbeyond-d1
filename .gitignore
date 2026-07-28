@@ -26,5 +26,3 @@ skills/vertical_grasp_object_skill/models/*.npz
 
 tools/yolo_train/train.log
 
-# vision.py vendored into d1_camera by scripts/build.sh (source lives in tools/)
-primitives/d1_camera/d1_camera/vision.py

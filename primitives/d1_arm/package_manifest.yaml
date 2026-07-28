@@ -2,10 +2,12 @@
 manifestVersion: 1
 
 package:
-  name: com.beingbeyond.primitive.d1_arm
+  name: robonix.primitive.beingbeyond.d1.arm
   version: 0.1.0
-  vendor: beingbeyond
   description: D1 6-DOF arm primitive — absolute joint control (rad) + Cartesian move_pose via the SDK's arm-only IK.
+  tags: [primitive, arm, manipulator, beingbeyond, d1]
+  maintainers:
+    - Felix <xi.lifeng@qq.com>
   license: MulanPSL-2.0
 
 build: bash scripts/build.sh

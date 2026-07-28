@@ -2,10 +2,12 @@
 manifestVersion: 1
 
 package:
-  name: com.beingbeyond.primitive.d1_camera
+  name: robonix.primitive.beingbeyond.d1.camera
   version: 0.1.0
-  vendor: beingbeyond
   description: D1 head RealSense D435i camera primitive — on-demand RGB + depth snapshots.
+  tags: [primitive, camera, rgbd, realsense, beingbeyond, d1]
+  maintainers:
+    - Felix <xi.lifeng@qq.com>
   license: MulanPSL-2.0
 
 build: bash scripts/build.sh

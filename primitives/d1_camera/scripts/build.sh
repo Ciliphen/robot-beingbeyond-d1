@@ -17,9 +17,4 @@ FLAGS=(--mcp)
 [[ "${RBNX_BUILD_CLEAN:-}" == "1" ]] && FLAGS+=(--clean)
 rbnx codegen -p "$PKG" "${FLAGS[@]}"
 
-# Vendor vision.py (RealSenseCamera) into the package so it is self-contained.
-# Single source of truth stays in the repo's tools/; this copy is a build
-# artifact (gitignored). main.py imports it as `from d1_camera.vision import`.
-cp "$PKG/../../tools/vision.py" "$PKG/d1_camera/vision.py"
-
 echo "[d1_camera] build done"
