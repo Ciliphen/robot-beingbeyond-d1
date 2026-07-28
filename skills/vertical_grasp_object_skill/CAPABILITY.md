@@ -1,5 +1,5 @@
 ---
-description: Detect an object on the table (YOLO for cubes/blocks, open-vocabulary VLM for other objects), pick it up / place it down with the D1 dexterous hand, stack one cube on another, and verify success — optional grasp angle and gripper aperture.
+description: Detect an object on the table (YOLO for cubes/blocks, open-vocabulary VLM for other objects), pick it up / place it down with the D1 dexterous hand, stack one cube on another, drop a cube into a fixed container, sort cubes by colour into per-colour spots, and verify success — optional grasp angle and gripper aperture.
 ---
 
 # 垂直抓取物体 (vertical_grasp_object) — detect / pick / place objects on the table
@@ -20,7 +20,7 @@ projection run locally (pure compute; the `object_detect` + `block_grasp` stacks
 are vendored into this package, FK/IK from the `beingbeyond_d1_sdk` wheel — no
 external repo needed).
 
-## Interface (7 MCP tools)
+## Interface (8 MCP tools)
 
 All under the `robonix/skill/vertical_grasp_object/*` namespace. Coordinates are base-frame
 metres; a location string is `"x,y"` (Z = configured `pick_z`), `"x,y,z"`, or a
@@ -183,6 +183,39 @@ one table plane), so it drops just above the table inside the container.
 so this does not confirm the cube ended up inside the container — it is a
 planar-XY placement at the fixed spot. For a success check, call `verify_grasp`
 (VLM) afterwards.
+
+### `robonix/skill/vertical_grasp_object/sort_cubes` — **preferred for "sort/classify cubes by colour"**
+
+Sort every cube on the table by colour into its own **fixed per-colour spot** in
+a **single call**: detect all cubes (YOLO), then for each cube pick it up and
+release it at that colour's fixed position, parking the arm between cubes.
+**Whenever the user wants to classify / sort cubes by colour, call this** instead
+of chaining `detect_cubes` + `pick_cube` + `place_cube` yourself.
+
+| param     | type   | default | meaning                                                                                    |
+|-----------|--------|---------|--------------------------------------------------------------------------------------------|
+| `gripper` | string | ""      | Optional close amount on each cube: `0.0` (open) / `0.5` (standard) / `1.0` (tightest); empty = standard grasp. |
+
+Returns `{ok, message}`. `ok=true` **iff** every detected sortable cube was
+grasped **and** released at its colour's spot. `message` lists each cube's
+outcome (placed at / failure step). The **destinations are fixed** (configured in
+the skill) — the caller supplies no positions:
+
+| colour        | spot (base frame, m) |
+|---------------|----------------------|
+| `yellow_cube` | `(0.328, 0.398)`     |
+| `green_cube`  | `(0.207, 0.422)`     |
+| `red_cube`    | `(0.078, 0.446)`     |
+
+The scene is detected **once** at the start (cubes only move because this arm
+moves them), and cubes are sorted highest-score first. A detected cube whose
+colour has **no configured spot** (e.g. blue) is skipped and named in `message`.
+Each cube is released at the **same Z it was grasped at** (the detected cube
+centre, one table plane), so it drops just above the table at its spot.
+
+**No landed verification.** Like `detect_cubes`, YOLO has no depth, so this does
+not visually confirm where each cube landed — it is planar-XY placement at fixed
+spots. For a success check, call `verify_grasp` (VLM) afterwards.
 
 ## Usage pattern (recommended closed loop)
 

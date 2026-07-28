@@ -20,6 +20,15 @@ config:
   # cube's centre. Set to your cube's side length (standard cube = 5 cm).
   block_height: 0.05
 
+  # bool, default: true.
+  # Whether pick() judges grasp success from the hand's finger angles (the 4
+  # main fingers must settle in a calibrated band). Set false to DISABLE that
+  # check: pick() then assumes the grasp held once the hand closes and always
+  # reports success. Use this if the finger-angle feedback misfires — reporting
+  # "grasp failed" on a cube that was actually held — which makes the caller
+  # (e.g. sort_cubes) open the hand on the next step and drop the held cube.
+  grasp_feedback: true
+
   # float (metres), default: 0.0.
   # Constant correction added to the CALIBRATED table plane Z, everywhere. The
   # hand-eye calibration fixes the table height in the base frame; if picks land

@@ -149,6 +149,11 @@ skill:
       # stack_cubes: one cube height (m); the top cube is released at
       # base_cube_z + block_height so it lands one cube above the base.
       block_height: 0.05
+      # pick(): judge grasp success from the hand's finger angles. Set false to
+      # disable — pick() then assumes the grasp held once the hand closes. Use if
+      # the finger-angle feedback misfires (reports "grasp failed" on a cube that
+      # was actually held), which makes sort_cubes open the hand and drop it.
+      grasp_feedback: false
 
   # hand_gesture: one MCP tool (gesture_dance). pilot dispatches to it through
   # executor when the user asks the hand to "dance" / wiggle its fingers. Hand-

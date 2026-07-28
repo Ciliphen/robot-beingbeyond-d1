@@ -42,7 +42,7 @@ GRASP_Z_OFFSET: float = 0.015          # Z offset above table for grasp (m)
 GRAVITY_SAG_FACTOR: float = 0.3      # m of sag per m³ of horizontal distance
 
 # ── Motion ─────────────────────────────────────────────────────────────────
-Z_SAFE: float = 0.25                # safe Z height for lift-after-grasp / travel (m)
+Z_SAFE: float = 0.35                # safe Z height for lift-after-grasp / travel (m)
 APPROACH_HEIGHT_OFFSET: float = 0.10   # height above target to approach first (m)
 CATCH_DELAY_S: float = 0.8            # pause after hand open/close (CAN bus latency)
 INTERP_STEP_SIZE: float = 0.005       # interpolation step size for Jacobian IK (m)

@@ -1,0 +1,14 @@
+# MCP-callable "sort cubes by colour" tool. The LLM picks this up via pilot when
+# the user wants to CLASSIFY / SORT coloured cubes into per-colour spots, e.g.
+# "把方块按颜色分类" / "sort the cubes by colour" — PREFER this over calling
+# detect_cubes + pick_cube + place_cube by hand: it does the whole detect-all ->
+# (pick -> place -> park) per cube in one call, releasing each cube at its
+# colour's fixed position. The handler docstring in main.py is what the LLM reads.
+[contract]
+id      = "robonix/skill/vertical_grasp_object/sort_cubes"
+version = "1"
+kind    = "skill"
+idl     = "vertical_grasp_object/srv/SortCubes.srv"
+
+[mode]
+type = "rpc"

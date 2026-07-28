@@ -65,7 +65,7 @@ class GraspCubeController:
     """Grasp a cube at a location, place it at another. Synchronous, headless,
     no vision. Hardware is driven through injected primitive handles."""
 
-    def __init__(self, *, robot, hand, urdf_path: str = "") -> None:
+    def __init__(self, *, robot, hand, urdf_path: str = "", grasp_feedback: bool = True) -> None:
         """Set up kinematics and move the arm to a safe, table-perpendicular
         posture so the first approach has a well-conditioned IK start.
 
@@ -73,9 +73,14 @@ class GraspCubeController:
             robot: Injected arm handle (HeadArmRobot-like) — the arm primitive.
             hand:  Injected hand handle (DexHand-like) — the hand primitive.
             urdf_path: Robot URDF; empty for the SDK default.
+            grasp_feedback: When True, pick() judges grasp success from the hand's
+                finger angles; when False, pick() assumes the grasp succeeded once
+                the hand closes (use if the finger-angle feedback misfires and
+                reports a false "grasp failed" on a cube that was actually held).
         """
         self._robot = robot
         self._hand = hand
+        self._grasp_feedback = bool(grasp_feedback)
         self._holding = False  # True after a successful pick, until place
 
         if not urdf_path:
@@ -389,7 +394,15 @@ class GraspCubeController:
             print("[Pick] Lift failed (object may still be grasped).", flush=True)
         time.sleep(CATCH_DELAY_S)
 
-        # Grasp success: average of the 4 main fingers in the expected band.
+        # Grasp success check. When the finger-angle feedback is disabled, assume
+        # the grasp held once the hand closed (avoids a false "grasp failed" that
+        # would make the caller open the hand and drop a cube it was really
+        # holding); otherwise judge from the average of the 4 main fingers.
+        if not self._grasp_feedback:
+            self._holding = True
+            print("[Pick] OK (grasp feedback disabled — assumed held)", flush=True)
+            return {"ok": True, "location": loc, "message": "object grasped (feedback disabled)"}
+
         current_pos = self._hand.read_joint_pos()
         active = [current_pos[i] for i in [0, 2, 3, 4]]  # thumb, idx, mid, ring
         avg_pos = sum(active) / len(active)

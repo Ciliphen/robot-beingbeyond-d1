@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 """vertical_grasp_object — detect cubes, pick one at a location, place it at another.
 
-Six LLM-callable MCP tools for the D1 dexterous hand:
+Eight LLM-callable MCP tools for the D1 dexterous hand:
 
   * detect_cubes(class_filter)  — YOLO on a head-camera frame; fixed cube
                                   classes. PREFERRED for cubes/blocks (feed
@@ -15,6 +15,12 @@ Six LLM-callable MCP tools for the D1 dexterous hand:
   * stack_cubes(top, base)      — PREFERRED for stacking: detect both cubes, pick
                                   the top-colour one, place it on the base-colour
                                   one, all in one call.
+  * put_cube_in_container(color) — PREFERRED for dropping a cube into the box:
+                                  detect, pick, release at the fixed container
+                                  spot, all in one call.
+  * sort_cubes()                — PREFERRED for sorting by colour: detect every
+                                  cube, place each at its colour's fixed spot,
+                                  all in one call.
 
 pick_cube / place_cube take a coordinate string ("x,y" / "x,y,z", base frame,
 metres) or a named spot; the caller (LLM/user) can get real coordinates from
@@ -51,6 +57,7 @@ from vertical_grasp_object_mcp import (  # noqa: E402
     VerifyGrasp_Request, VerifyGrasp_Response,
     StackCubes_Request, StackCubes_Response,
     PutCubeInContainer_Request, PutCubeInContainer_Response,
+    SortCubes_Request, SortCubes_Response,
 )
 
 # Fixed container drop-off spot (base frame, metres): the XY where
@@ -58,6 +65,17 @@ from vertical_grasp_object_mcp import (  # noqa: E402
 # reuses the detected cube's grasp Z (calibrated table plane + half a cube), so
 # pick and place share one table plane and the cube drops just above the table.
 _CONTAINER_XY = (0.160, -0.245)
+
+# Fixed per-colour drop-off spots (base frame, metres) used by sort_cubes: each
+# detected cube of a given colour is released at its own XY here. Like
+# put_cube_in_container, the release Z is NOT fixed — it reuses each cube's own
+# detected grasp Z (calibrated table plane + half a cube), so the cube drops just
+# above the table. Keys are the trained YOLO class names.
+_SORT_XY_BY_CLASS = {
+    "yellow_cube": (0.328, 0.398),
+    "green_cube":  (0.207, 0.422),
+    "red_cube":    (0.078, 0.446),
+}
 
 # Package root (the vertical_grasp_object_skill dir holding models/, capabilities/, ...),
 # used to resolve the default model / calibration paths.
@@ -78,6 +96,7 @@ logging.basicConfig(level=logging.INFO, format="[vertical_grasp_object] %(leveln
 _state: dict = {
     "pick_z":     0.095,   # default grasp height when a location omits Z
     "block_height": 0.05,  # one cube height; stack_cubes releases at base_z + this
+    "grasp_feedback": True,  # pick() judges grasp from finger angles; set False if that feedback misfires and drops held cubes
     "urdf_path":  "",
     "model_path": "",      # YOLO .pt (resolved in on_init; see models/README.md)
     "calib_path": "",      # hand-eye handeye_calib.npz (resolved in on_init)
@@ -588,6 +607,100 @@ def put_cube_in_container(req: PutCubeInContainer_Request) -> PutCubeInContainer
                  f"{cube['z']}), released at ({cx}, {cy}, {cube['z']})"))
 
 
+@vertical_grasp_object.mcp("robonix/skill/vertical_grasp_object/sort_cubes")
+def sort_cubes(req: SortCubes_Request) -> SortCubes_Response:
+    """按颜色分类方块：检测桌面上所有方块，把每个方块放到它颜色对应的固定位置（一次调用完成整轮分拣）。
+    PREFERRED whenever the user wants to CLASSIFY / SORT the cubes by colour, e.g.
+    "把方块按颜色分类" / "帮我把积木分拣一下" / "sort the cubes by colour". Call THIS
+    instead of orchestrating detect_cubes + pick_cube + place_cube yourself — it
+    does the WHOLE job in one call: detect every cube on the table with the head
+    camera + YOLO, then for each cube whose colour has a configured spot, pick it
+    up and release it at that colour's FIXED position, parking the arm between
+    cubes. The per-colour destinations are fixed in the skill (yellow / green /
+    red each have their own spot); the caller does NOT supply positions.
+
+    `gripper` sets how tightly to close on each cube: 0.0 (open) / 0.5 (standard
+    grasp, the default for a 5 cm cube) / 1.0 (tightest). ALWAYS supply this
+    field — pass an empty string "" for the standard grasp (the normal case, e.g.
+    a plain "把方块分类" with no size hint). Only pass a number if the user asks
+    for a tighter/looser grip. Do NOT call with an empty argument object; call
+    with {"gripper": ""} when you have no specific grip requirement.
+
+    Cubes are sorted one at a time, highest-score first; the scene is detected
+    ONCE at the start (cubes don't move except by this arm). A cube whose colour
+    has no configured spot is skipped and named in the message. Returns ok=true
+    iff every sortable cube detected was grasped AND released at its colour's
+    spot; on any failure the message lists each cube's outcome so you can retry.
+    Like detect_cubes, YOLO has no depth, so this does NOT visually verify the
+    cubes landed — use verify_grasp (VLM) after if you need a success check."""
+    ctrl = _controller_or_none()
+    det = _state["detector"]
+    if ctrl is None or det is None:
+        return SortCubes_Response(
+            ok=False, message="skill not activated (no arm/hand/camera connection)")
+
+    try:
+        gripper = _parse_opt_float(req.gripper, "gripper")
+    except ValueError as exc:
+        return SortCubes_Response(ok=False, message=f"bad argument: {exc}")
+
+    outcomes: list[str] = []
+    all_ok = True
+    try:
+        with _state["lock"]:
+            # Detect the whole scene ONCE — park at home first (unobstructed
+            # camera view, fixed workspace-clamp centre). The cubes only move
+            # because this arm moves them, so one detection covers the round.
+            ctrl.move_home()
+            cubes = det.detect()
+            if not cubes:
+                return SortCubes_Response(ok=True, message="no cubes detected to sort")
+
+            # Sort highest-score first so the most confident detections go first.
+            cubes = sorted(cubes, key=lambda c: c.get("score", 0.0), reverse=True)
+            for cube in cubes:
+                cls = cube.get("class_name")
+                spot = _SORT_XY_BY_CLASS.get(cls)
+                if spot is None:
+                    all_ok = False
+                    outcomes.append(f"{cls}: skipped (no configured spot)")
+                    continue
+
+                # Pick the cube (its own grasp angle aligns the gripper).
+                pick = ctrl.pick(cube["x"], cube["y"], cube["z"],
+                                 angle_deg=cube.get("grasp_angle_deg"), gripper=gripper)
+                if not pick.get("ok"):
+                    all_ok = False
+                    outcomes.append(
+                        f"{cls}: grasp failed at ({cube['x']}, {cube['y']}, "
+                        f"{cube['z']}): {pick.get('message')}")
+                    try:
+                        ctrl.move_home()
+                    except Exception:  # noqa: BLE001
+                        log.exception("move_home after failed pick failed")
+                    continue
+
+                # Release at this colour's fixed spot. Reuse the cube's own grasp
+                # Z (calibrated table plane + half a cube) so it drops just above
+                # the table — same rationale as put_cube_in_container. Then park
+                # so the next detection / grasp starts from a clean home posture.
+                sx, sy = spot
+                place = ctrl.place(sx, sy, cube["z"])
+                if place.get("ok"):
+                    ctrl.move_home()
+                    outcomes.append(f"{cls}: placed at ({sx}, {sy})")
+                else:
+                    all_ok = False
+                    outcomes.append(
+                        f"{cls}: grasped but place failed at ({sx}, {sy}): "
+                        f"{place.get('message')}")
+    except Exception as exc:  # noqa: BLE001
+        log.exception("sort_cubes failed")
+        return SortCubes_Response(ok=False, message=f"error: {exc}")
+
+    return SortCubes_Response(ok=all_ok, message="; ".join(outcomes))
+
+
 # ── Lifecycle ────────────────────────────────────────────────────────
 @vertical_grasp_object.on_init
 def init(cfg: dict):
@@ -631,6 +744,7 @@ def init(cfg: dict):
     except (TypeError, ValueError):
         return Err(f"table_z_offset must be a number, got {tzo!r}")
     _state["detect_debug"] = bool(cfg.get("detect_debug", _state["detect_debug"]))
+    _state["grasp_feedback"] = bool(cfg.get("grasp_feedback", _state["grasp_feedback"]))
     vmr = cfg.get("verify_match_radius", _state["verify_match_radius"])
     try:
         _state["verify_match_radius"] = float(vmr)
@@ -662,6 +776,7 @@ def activate():
     log.info("initialising controller (homing arm) ...")
     _state["controller"] = GraspCubeController(
         robot=arm, hand=hand, urdf_path=_state["urdf_path"],
+        grasp_feedback=_state["grasp_feedback"],
     )
     log.info("initialising cube detector (loading YOLO) ...")
     _state["detector"] = CubeDetector(

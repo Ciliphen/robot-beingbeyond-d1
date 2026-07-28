@@ -80,3 +80,5 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   - `~/my_deploy`：robonix 接入模板
 - 工作原则：
   - 涉及 robonix 的改动，先对照对应仓库与文档，再动手。
+  - 增加新原语或技能后，需检查soma.yaml、robonix_manifest.yaml等配置文件是否需要修改。
+  - 仓库变动后，需检查REAME.md是否需要调整。
