@@ -6,7 +6,7 @@ catalog:
   version: 0.1.0
   description: BeingBeyond D1 desktop robot deployment — dexterous-hand object pick/place skill.
   license: MulanPSL-2.0
-  tags: [robot, deploy, beingbeyond-d1, manipulation]
+  tags: [robot, deploy, beingbeyond, d1, manipulation, dexterous-hand]
   maintainers:
     - Felix <xi.lifeng@qq.com>
 
@@ -21,6 +21,15 @@ catalog:
 # TencentTTSBackend needs only SecretId/SecretKey (the ASR AppID is not used);
 # export them in the operator shell before `rbnx boot` — see .env.example.
 env:
+  # Absolute path to THIS deploy repo. The packages are fetched by `url:` into
+  # rbnx-boot/cache/, so robot-specific assets that live here (YOLO weights and
+  # hand-eye calibration under ./models/) have to be handed to them as absolute
+  # paths. Edit this line if you cloned the repo somewhere else — a value set
+  # here WINS over one exported in your shell (rbnx overwrites the process env
+  # from `env:`), so exporting D1_DEPLOY_DIR will not override it.
+  # ${HOME} itself is expanded from the real process environment.
+  D1_DEPLOY_DIR: ${HOME}/robot-beingbeyond-d1
+
   SPEECH_BACKEND: custom
   SPEECH_ASR_STREAM_BACKEND_CLASS: speech_service.paddle_asr:PaddleStreamingASRBackend
   SPEECH_ASR_BACKEND_CLASS: speech_service.paddle_asr:PaddleStreamingASRBackend
@@ -47,27 +56,30 @@ system:
   liaison:  { listen: 127.0.0.1:50081, log: info }
 
 # ── Hardware primitives ──────────────────────────────────────────────
-# The vertical_grasp_object skill consumes d1_arm + d1_hand + d1_camera over gRPC, all
-# shipped in this repo under ./primitives/ (they own the serial link / CAN bus /
-# RealSense; arm+hand depend only on the beingbeyond_d1_sdk wheel + robonix_api,
-# d1_camera vendors vision.RealSenseCamera into its package at build time). The camera
-# feeds the skill's detect_cubes (YOLO) tool; run it at the hand-eye calibration
+# The vertical_grasp_object skill consumes d1_arm + d1_hand + d1_camera over gRPC.
+# Each lives in its own community repo (fetched into rbnx-boot/cache/) and owns
+# its hardware: the serial link / CAN bus / RealSense. arm+hand need only the
+# beingbeyond_d1_sdk wheel + robonix_api; d1_camera needs pyrealsense2. The
+# camera feeds the skill's detection stage — run it at the hand-eye calibration
 # resolution (1280x720) so detections resolve correctly.
 primitive:
   - name: d1_arm
-    path: ./primitives/d1_arm
+    url: https://github.com/Ciliphen/primitive-beingbeyond-d1-arm-rbnx
+    branch: main
     config:
       dev: /dev/ttyUSB0
       baudrate: 1000000
       ik_pos_tol: 0.05
   - name: d1_hand
-    path: ./primitives/d1_hand
+    url: https://github.com/Ciliphen/primitive-beingbeyond-d1-hand-rbnx
+    branch: main
     config:
       hand_type: right
       can_iface: can0
       baudrate: 1000000
   - name: d1_camera
-    path: ./primitives/d1_camera
+    url: https://github.com/Ciliphen/primitive-beingbeyond-d1-camera-rbnx
+    branch: main
     config:
       width: 1280
       height: 720
@@ -115,22 +127,29 @@ service:
 # STACK cubes (stack_cubes — give two colours, it detects+picks+places in one call), or
 # to put a cube INTO a box/plate (put_cube_in_container — give one colour, it
 # detects+picks+places at the fixed container spot in one call). detect_cubes (YOLO, fixed cube
-# classes) needs the weights + hand-eye calibration under
-# ./skills/vertical_grasp_object_skill/models/ (see that dir's README; git-ignored).
+# classes) needs the weights + hand-eye calibration under this repo's ./models/
+# (see that dir's README; git-ignored, and NOT in the skill package since they
+# are robot-specific and the package is fetched fresh into rbnx-boot/cache/).
 # detect_objects (open-vocabulary via a VLM) shares that calibration and needs a
 # VLM endpoint — configured below or via env VLM_BASE_URL/VLM_API_KEY/VLM_MODEL;
 # left empty it is simply disabled while the other tools keep working.
 skill:
   - name: vertical_grasp_object
-    path: ./skills/vertical_grasp_object_skill
+    url: https://github.com/Ciliphen/skill-vertical-grasp-object-rbnx
+    branch: main
     config:
       detect_debug: true
       pick_z: 0.025
       urdf_path: ""
-      # Detection assets. Empty → package defaults ./models/best.pt and
-      # ./models/handeye_calib.npz (relative paths resolve to the skill package).
-      model_path: ""
-      calib_path: ""
+      # Detection assets — robot-specific, so they live in THIS deploy repo, not
+      # in the skill package. The skill is now fetched by `url:` into
+      # rbnx-boot/cache/, whose models/ dir is empty, so these MUST be absolute
+      # paths: the skill uses an absolute path as-is, while a relative one would
+      # anchor on the cached package root and miss them.
+      # D1_DEPLOY_DIR is exported in `env:` above — set it to this repo's path.
+      # Provide both files under ./models/ — see ./models/README.md.
+      model_path: ${D1_DEPLOY_DIR}/models/best.pt
+      calib_path: ${D1_DEPLOY_DIR}/models/handeye_calib.npz
       # Constant correction (m) to the calibrated table plane Z (both detectors +
       # perspective correction). NEGATIVE if picks land a fixed amount too high
       # across the whole table (try -0.01, -0.02 ...); positive if too low.
@@ -161,5 +180,6 @@ skill:
   # arm, camera, model, or calibration. No tunable config (the per-call
   # duration_s is the only knob).
   - name: hand_gesture
-    path: ./skills/hand_gesture_skill
+    url: https://github.com/Ciliphen/skill-hand-gesture-rbnx
+    branch: main
     config: {}

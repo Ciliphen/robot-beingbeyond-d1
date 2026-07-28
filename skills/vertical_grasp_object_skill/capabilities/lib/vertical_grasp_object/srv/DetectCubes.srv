@@ -1,8 +1,0 @@
-# Detect cubes on the table via the head camera + YOLO-OBB.
-# Request: optional colour/class filter.
-# Response: whether detection ran, a message, and the detected cubes as JSON.
-string class_filter   # optional: only return this class (e.g. "red_cube"); empty = all
----
-bool ok               # true if detection ran (even if zero cubes were found)
-string message        # human-readable summary / error detail
-string cubes          # JSON array: [{"class_name","score","x","y","z","grasp_angle_deg"}], base frame, metres

@@ -59,17 +59,20 @@ Python 3.10（conda env `bb_d1_robonix`）。本部署验证所用 Robonix commi
 
 | 类型 | 实例名 | 包 | 来源 |
 |---|---|---|---|
-| primitive | `d1_arm` | `robonix.primitive.beingbeyond.d1.arm` | `./primitives/d1_arm` |
-| primitive | `d1_hand` | `robonix.primitive.beingbeyond.d1.hand` | `./primitives/d1_hand` |
-| primitive | `d1_camera` | `robonix.primitive.beingbeyond.d1.camera` | `./primitives/d1_camera` |
-| primitive | `audio_driver` | `robonix.primitive.audio.alsa` | `syswonder/primitive-audio-driver-rbnx` |
-| service | `speech` | — | `${ROBONIX_SOURCE_PATH}/services/speech` |
-| skill | `vertical_grasp_object` | `robonix.skill.vertical_grasp_object` | `./skills/vertical_grasp_object_skill` |
-| skill | `hand_gesture` | `robonix.skill.hand_gesture` | `./skills/hand_gesture_skill` |
+| primitive | `d1_arm` | `robonix.primitive.beingbeyond.d1.arm` | [primitive-beingbeyond-d1-arm-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-arm-rbnx) |
+| primitive | `d1_hand` | `robonix.primitive.beingbeyond.d1.hand` | [primitive-beingbeyond-d1-hand-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-hand-rbnx) |
+| primitive | `d1_camera` | `robonix.primitive.beingbeyond.d1.camera` | [primitive-beingbeyond-d1-camera-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-camera-rbnx) |
+| primitive | `audio_driver` | `robonix.primitive.audio.alsa` | [primitive-audio-driver-rbnx](https://github.com/syswonder/primitive-audio-driver-rbnx) |
+| service | `speech` | — | `${ROBONIX_SOURCE_PATH}/services/speech`（robonix 内置） |
+| skill | `vertical_grasp_object` | `robonix.skill.vertical_grasp_object` | [skill-vertical-grasp-object-rbnx](https://github.com/Ciliphen/skill-vertical-grasp-object-rbnx) |
+| skill | `hand_gesture` | `robonix.skill.hand_gesture` | [skill-hand-gesture-rbnx](https://github.com/Ciliphen/skill-hand-gesture-rbnx) |
 
-三个 D1 原语与两个技能目前随本仓提供（`path:`），各自已是自包含的规范包目录
-（`package_manifest.yaml` / `config.spec` / `README.md` / `scripts/`），可直接迁出为独立
-社区仓库；迁出后本清单改用 `url:` + 发布 tag 引用即可。
+本仓只做**组装与本体专属配置**：清单、soma/urdf、离线工具与检测资产。所有驱动与技能都在
+各自的独立仓库，由清单的 `url:` + `branch:` 拉取到 `rbnx-boot/cache/<repo-name>/`。
+包的能力表、配置字段与安全说明见各包自己的 README。
+
+改包代码的流程因此变成：在包仓改 → push → 本仓 `rbnx clean -f robonix_manifest.yaml --cache`
+→ 重新 `rbnx build`。
 
 ## 结构
 
@@ -82,13 +85,7 @@ robot-beingbeyond-d1/
 ├── urdf/
 │   ├── robot_right_hand.urdf   # 整机 URDF（供 soma / IK 用），根 link = link_base
 │   └── meshes/                 # URDF 引用的 STL（含 right_hand/）
-├── primitives/             # 硬件原语（各自持有硬件，仅依赖 beingbeyond_d1_sdk wheel + robonix_api）
-│   ├── d1_arm/             # 6-DOF 机械臂 + 头部（HeadArm 串口 /dev/ttyUSB0）
-│   ├── d1_hand/            # 五指灵巧手（CAN can0）
-│   └── d1_camera/          # RealSense RGB/深度按需取帧（1280x720，喂检测）
-├── skills/
-│   ├── vertical_grasp_object_skill/   # 8 个 MCP 工具：检测 + 抓放 + 堆叠 + 分拣 + 复核
-│   └── hand_gesture_skill/            # 1 个 MCP 工具：手指跳舞
+├── models/                 # 检测资产：best.pt + handeye_calib.npz（本机专属，git-ignored）
 └── tools/                  # 离线工具（不参与部署）
     ├── func_verify/        # D1 SDK 功能自检示例（独立 env bb_d1_rbnx，见其 README）
     ├── yolo_train/         # 方块检测数据标注+训练链路，产物 best.pt 拷进 skill models/
@@ -121,7 +118,8 @@ WSLg 无真实声卡故 `arecord -l` 为空，设备必须显式设为 `pulse`�
 `pip install tools/func_verify/lib/beingbeyond_d1_sdk-0.2.0-cp310-*.whl` —— 本仓自带该
 wheel，`cp310` + `manylinux_2_17_x86_64`，故环境必须是 Python 3.10/x86_64），
 `d1_arm`/`d1_hand`/`d1_camera` 硬件就绪且总线权限已配，YOLO 权重与手眼标定放在
-`skills/vertical_grasp_object_skill/models/`（`best.pt` + `handeye_calib.npz`，见该目录 README）。
+`./models/`（`best.pt` + `handeye_calib.npz`，见该目录 README），并确认清单 `env:` 里的
+`D1_DEPLOY_DIR` 指向本仓的实际路径。
 如需语音，先起外部 PaddleSpeech ASR 服务。
 
 ```bash

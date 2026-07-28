@@ -18,11 +18,10 @@ logs/
 
 rbnx-boot/
 
-# YOLO weights + hand-eye calibration — large / deploy-specific binaries.
-# Provide these locally (see skills/vertical_grasp_object_skill/models/README.md); they
-# are intentionally NOT committed to the community repo.
-skills/vertical_grasp_object_skill/models/*.pt
-skills/vertical_grasp_object_skill/models/*.npz
+# YOLO weights + hand-eye calibration — large / robot-specific binaries.
+# Provide these locally (see models/README.md); intentionally NOT committed.
+models/*.pt
+models/*.npz
 
 tools/yolo_train/train.log
 
