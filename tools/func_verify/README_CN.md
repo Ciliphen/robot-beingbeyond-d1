@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../assets/bb_d1.png" width="400" alt="BeingBeyond D1">
+  <img src="../../assets/robot.jpg" width="400" alt="BeingBeyond D1">
 </p>
 
 # BeingBeyond D1 SDK 示例

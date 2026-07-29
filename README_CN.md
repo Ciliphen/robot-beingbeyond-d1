@@ -83,7 +83,7 @@ robot-beingbeyond-d1/
 ├── robonix_manifest.yaml   # 部署清单：系统服务 + 语音 + 4 原语 + speech + 2 技能
 ├── soma.yaml               # D1 body model（urdf.path → ./urdf/）
 ├── .env.example            # VLM + 腾讯云 TTS 凭据模板（copy 为 .env）
-├── assets/                 # robot.jpg（catalog 预览图）+ bb_d1.png（原图）
+├── assets/robot.jpg        # catalog 预览图，tools/func_verify/ 也引用它
 ├── urdf/
 │   ├── robot_right_hand.urdf   # 整机 URDF（供 soma / IK 用），根 link = link_base
 │   └── meshes/                 # URDF 引用的 STL（含 right_hand/）

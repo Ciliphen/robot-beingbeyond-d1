@@ -101,7 +101,7 @@ robot-beingbeyond-d1/
 ├── robonix_manifest.yaml   # deployment manifest: system components + voice + 4 primitives + speech + 2 skills
 ├── soma.yaml               # D1 body model (urdf.path → ./urdf/)
 ├── .env.example            # VLM + Tencent Cloud TTS credential template (copy to .env)
-├── assets/                 # robot.jpg (catalog preview) + bb_d1.png (source image)
+├── assets/robot.jpg        # catalog preview image, also used by tools/func_verify/
 ├── models/                 # detection assets: best.pt + handeye_calib.npz (robot-specific, git-ignored)
 ├── urdf/
 │   ├── robot_right_hand.urdf   # whole-robot URDF (for soma / IK), root link = link_base
