@@ -64,21 +64,21 @@ system:
 # resolution (1280x720) so detections resolve correctly.
 primitive:
   - name: d1_arm
-    url: https://github.com/Ciliphen/primitive-beingbeyond-d1-arm-rbnx
+    url: https://github.com/syswonder/primitive-beingbeyond-d1-arm-rbnx
     branch: main
     config:
       dev: /dev/ttyUSB0
       baudrate: 1000000
       ik_pos_tol: 0.05
   - name: d1_hand
-    url: https://github.com/Ciliphen/primitive-beingbeyond-d1-hand-rbnx
+    url: https://github.com/syswonder/primitive-beingbeyond-d1-hand-rbnx
     branch: main
     config:
       hand_type: right
       can_iface: can0
       baudrate: 1000000
   - name: d1_camera
-    url: https://github.com/Ciliphen/primitive-beingbeyond-d1-camera-rbnx
+    url: https://github.com/syswonder/primitive-beingbeyond-d1-camera-rbnx
     branch: main
     config:
       width: 1280
@@ -135,7 +135,7 @@ service:
 # left empty it is simply disabled while the other tools keep working.
 skill:
   - name: vertical_grasp_object
-    url: https://github.com/Ciliphen/skill-vertical-grasp-object-rbnx
+    url: https://github.com/syswonder/skill-vertical-grasp-object-rbnx
     branch: main
     config:
       detect_debug: true
@@ -180,6 +180,6 @@ skill:
   # arm, camera, model, or calibration. No tunable config (the per-call
   # duration_s is the only knob).
   - name: hand_gesture
-    url: https://github.com/Ciliphen/skill-hand-gesture-rbnx
+    url: https://github.com/syswonder/skill-hand-gesture-rbnx
     branch: main
     config: {}

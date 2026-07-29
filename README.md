@@ -77,13 +77,13 @@ transform is done by the hand-eye homography inside the skill, and
 
 | Kind | Instance | Package | Source |
 |---|---|---|---|
-| primitive | `d1_arm` | `robonix.primitive.beingbeyond.d1.arm` | [primitive-beingbeyond-d1-arm-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-arm-rbnx) |
-| primitive | `d1_hand` | `robonix.primitive.beingbeyond.d1.hand` | [primitive-beingbeyond-d1-hand-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-hand-rbnx) |
-| primitive | `d1_camera` | `robonix.primitive.beingbeyond.d1.camera` | [primitive-beingbeyond-d1-camera-rbnx](https://github.com/Ciliphen/primitive-beingbeyond-d1-camera-rbnx) |
+| primitive | `d1_arm` | `robonix.primitive.beingbeyond.d1.arm` | [primitive-beingbeyond-d1-arm-rbnx](https://github.com/syswonder/primitive-beingbeyond-d1-arm-rbnx) |
+| primitive | `d1_hand` | `robonix.primitive.beingbeyond.d1.hand` | [primitive-beingbeyond-d1-hand-rbnx](https://github.com/syswonder/primitive-beingbeyond-d1-hand-rbnx) |
+| primitive | `d1_camera` | `robonix.primitive.beingbeyond.d1.camera` | [primitive-beingbeyond-d1-camera-rbnx](https://github.com/syswonder/primitive-beingbeyond-d1-camera-rbnx) |
 | primitive | `audio_driver` | `robonix.primitive.audio.alsa` | [primitive-audio-driver-rbnx](https://github.com/syswonder/primitive-audio-driver-rbnx) |
 | service | `speech` | — | `${ROBONIX_SOURCE_PATH}/services/speech` (built into robonix) |
-| skill | `vertical_grasp_object` | `robonix.skill.vertical_grasp_object` | [skill-vertical-grasp-object-rbnx](https://github.com/Ciliphen/skill-vertical-grasp-object-rbnx) |
-| skill | `hand_gesture` | `robonix.skill.hand_gesture` | [skill-hand-gesture-rbnx](https://github.com/Ciliphen/skill-hand-gesture-rbnx) |
+| skill | `vertical_grasp_object` | `robonix.skill.vertical_grasp_object` | [skill-vertical-grasp-object-rbnx](https://github.com/syswonder/skill-vertical-grasp-object-rbnx) |
+| skill | `hand_gesture` | `robonix.skill.hand_gesture` | [skill-hand-gesture-rbnx](https://github.com/syswonder/skill-hand-gesture-rbnx) |
 
 This repo does **assembly and robot-specific config only**: the manifest,
 soma/urdf, offline tools, and the detection assets. Every driver and skill lives
